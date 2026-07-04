@@ -1,5 +1,5 @@
 // Service worker — cache app shell để chạy offline
-const CACHE = 'caloviet-v9';
+const CACHE = 'caloviet-v10';
 const ASSETS = [
   './',
   './index.html',
@@ -31,8 +31,10 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  // Không cache API Strava
+  // Không đụng request khác origin (Strava, Open Food Facts, Anthropic)
   if (url.origin !== location.origin) return;
+  // Endpoint động (function OAuth) — luôn gọi mạng, không cache
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/.netlify/')) return;
   e.respondWith(
     caches.match(e.request, { ignoreSearch: true }).then(hit =>
       hit || fetch(e.request).then(res => {

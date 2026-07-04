@@ -458,10 +458,8 @@ const App = {
           <div class="btn-row">
             <button class="btn" id="strava-sync">🔄 Đồng bộ 7 ngày</button>
             <button class="btn secondary" id="strava-sync-30">30 ngày</button>
-          </div>` : Strava.isConfigured() ? `
-          <button class="btn" style="background:#fc4c02" id="strava-connect">Kết nối Strava</button>` : `
-          <div class="sub">Chưa cấu hình. Vào <b>Cài đặt → Strava</b> để nhập Client ID/Secret (hướng dẫn trong đó, mất ~2 phút).</div>
-          <button class="btn secondary" id="goto-settings" style="margin-top:10px">Mở Cài đặt</button>`}
+          </div>` : `
+          <button class="btn" style="background:#fc4c02" id="strava-connect">Kết nối Strava</button>`}
       </div>
 
       <div class="card">
@@ -483,11 +481,19 @@ const App = {
       </div>`;
 
     const $ = id => document.getElementById(id);
-    if ($('strava-connect')) $('strava-connect').addEventListener('click', () => Strava.authorize());
-    if ($('goto-settings')) $('goto-settings').addEventListener('click', () => this.go('settings'));
+    if ($('strava-connect')) $('strava-connect').addEventListener('click', () => this.connectStrava());
     if ($('strava-sync')) $('strava-sync').addEventListener('click', () => this.doSync(7));
     if ($('strava-sync-30')) $('strava-sync-30').addEventListener('click', () => this.doSync(30));
     $('btn-manual-workout').addEventListener('click', () => this.openWorkoutModal());
+  },
+
+  async connectStrava() {
+    this.toast('🟠 Đang mở Strava...');
+    try {
+      await Strava.authorize(); // chuyển hướng sang Strava nếu thành công
+    } catch (e) {
+      this.toast('⚠️ ' + e.message);
+    }
   },
 
   async doSync(days) {
@@ -810,19 +816,16 @@ const App = {
       </div>
 
       <div class="card">
-        <h2>🟠 Strava API</h2>
-        <div class="sub" style="margin-bottom:10px">
-          <b>Cách lấy (1 lần, ~2 phút):</b><br>
-          1. Mở <b>strava.com/settings/api</b> (đăng nhập Strava)<br>
-          2. Tạo app: Category chọn bất kỳ, Website điền <b>${location.origin}</b>,
-          Authorization Callback Domain điền <b>${location.hostname}</b><br>
-          3. Copy Client ID và Client Secret dán vào đây.
+        <h2>🟠 Strava — Coros / Garmin</h2>
+        <div class="sub" style="margin-bottom:12px">
+          Đồng hồ Coros / Garmin tự động sync sang Strava. Kết nối Strava là app lấy
+          được mọi buổi tập (kèm calo) từ cả 3 nguồn.
         </div>
-        <div class="field"><label>Client ID</label><input id="sv-id" inputmode="numeric" value="${esc(st.clientId || '')}" placeholder="vd: 123456"></div>
-        <div class="field"><label>Client Secret</label><input id="sv-secret" value="${esc(st.clientSecret || '')}" placeholder="dãy ký tự dài"></div>
-        <button class="btn" id="sv-save" style="background:#fc4c02">Lưu & Kết nối Strava</button>
-        ${Strava.isConnected() ? '<button class="btn danger" id="sv-disconnect" style="margin-top:10px">Ngắt kết nối Strava</button>' : ''}
-        <div class="sub" style="margin-top:10px">🔒 Thông tin chỉ lưu trên máy bạn, không gửi đi đâu ngoài Strava.</div>
+        ${Strava.isConnected() ? `
+          <div class="strava-badge" style="margin-bottom:10px">✓ Đã kết nối${st.athlete ? ' · ' + esc(st.athlete) : ''}</div>
+          <button class="btn danger" id="sv-disconnect">Ngắt kết nối Strava</button>` : `
+          <button class="btn" id="sv-connect" style="background:#fc4c02">Kết nối Strava</button>`}
+        <div class="sub" style="margin-top:10px">🔒 Bấm nút sẽ mở Strava để bạn đăng nhập & cho phép. Không cần nhập mã gì cả.</div>
       </div>
 
       <div class="card">
@@ -878,13 +881,7 @@ const App = {
       this.render();
     });
 
-    $('sv-save').addEventListener('click', () => {
-      const clientId = $('sv-id').value.trim();
-      const clientSecret = $('sv-secret').value.trim();
-      if (!clientId || !clientSecret) { this.toast('⚠️ Nhập đủ Client ID và Secret'); return; }
-      Store.setStrava({ clientId, clientSecret });
-      Strava.authorize();
-    });
+    if ($('sv-connect')) $('sv-connect').addEventListener('click', () => this.connectStrava());
 
     if ($('sv-disconnect')) $('sv-disconnect').addEventListener('click', () => {
       Strava.disconnect();

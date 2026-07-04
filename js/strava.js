@@ -2,29 +2,40 @@
 // Coros / Garmin không mở API cho cá nhân, nhưng cả hai đều tự động sync
 // sang Strava. Kết nối Strava = lấy được workout từ Coros/Garmin/Strava.
 //
-// Người dùng tạo API app cá nhân tại https://www.strava.com/settings/api
-// rồi nhập Client ID + Client Secret vào phần Cài đặt (lưu ngay trên máy).
+// OAuth đi qua Netlify Function (/api/strava-token): Client Secret của Strava
+// được giữ trên server (biến môi trường), KHÔNG nằm trong máy người dùng.
+// Người dùng chỉ bấm 1 nút "Kết nối Strava" — không cần nhập key.
 
 const Strava = {
   AUTH_URL: 'https://www.strava.com/oauth/authorize',
-  TOKEN_URL: 'https://www.strava.com/oauth/token',
+  FN_URL: '/api/strava-token',
   API: 'https://www.strava.com/api/v3',
 
   get cfg() { return Store.strava; },
 
-  isConfigured() { return !!(this.cfg.clientId && this.cfg.clientSecret); },
   isConnected() { return !!this.cfg.refreshToken; },
 
-  // B1: chuyển tới trang cấp quyền Strava
-  authorize() {
+  // B1: chuyển tới trang cấp quyền Strava (lấy Client ID công khai từ server)
+  async authorize() {
+    let clientId;
+    try {
+      const res = await fetch(this.FN_URL);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'config');
+      clientId = data.client_id;
+    } catch (e) {
+      throw new Error('Chưa kết nối được máy chủ Strava. Cần triển khai app lên Netlify (không chạy được ở bản xem thử offline).');
+    }
+    if (!clientId) throw new Error('Server chưa cấu hình Strava (thiếu STRAVA_CLIENT_ID).');
+
     const redirect = location.origin + location.pathname;
-    const url = `${this.AUTH_URL}?client_id=${encodeURIComponent(this.cfg.clientId)}` +
+    const url = `${this.AUTH_URL}?client_id=${encodeURIComponent(clientId)}` +
       `&redirect_uri=${encodeURIComponent(redirect)}` +
       `&response_type=code&approval_prompt=auto&scope=read,activity:read_all`;
     location.href = url;
   },
 
-  // B2: khi Strava redirect về với ?code=..., đổi code lấy token
+  // B2: khi Strava redirect về với ?code=..., đổi code lấy token qua function
   async handleRedirect() {
     const params = new URLSearchParams(location.search);
     const code = params.get('code');
@@ -41,18 +52,21 @@ const Strava = {
       return true;
     } catch (e) {
       console.error('Strava token error', e);
-      throw new Error('Không đổi được mã Strava. Kiểm tra Client ID/Secret.');
+      throw new Error('Không đổi được mã Strava: ' + e.message);
     }
   },
 
   async _token(extra) {
-    const body = new URLSearchParams({
-      client_id: this.cfg.clientId,
-      client_secret: this.cfg.clientSecret,
-      ...extra,
+    const res = await fetch(this.FN_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(extra),
     });
-    const res = await fetch(this.TOKEN_URL, { method: 'POST', body });
-    if (!res.ok) throw new Error('token ' + res.status);
+    if (!res.ok) {
+      let msg = 'HTTP ' + res.status;
+      try { const e = await res.json(); if (e && e.error) msg = e.error; } catch { /* giữ msg mặc định */ }
+      throw new Error(msg);
+    }
     return res.json();
   },
 

@@ -39,6 +39,10 @@ Muốn dùng trên iPhone, app cần được đưa lên một địa chỉ **ht
 2. Settings → Pages → Deploy from branch `main`
 3. Nhận link `https://<user>.github.io/<repo>`
 
+> ⚠️ GitHub Pages **không chạy được serverless function** → nút "Kết nối Strava"
+> một chạm sẽ không hoạt động. Muốn dùng Strava, hãy deploy bằng **Netlify**
+> (Cách 1) để có function OAuth. Các tính năng còn lại vẫn chạy bình thường.
+
 ### Cài lên iPhone 15
 1. Mở link trên bằng **Safari**
 2. Bấm nút **Chia sẻ** (ô vuông mũi tên) → **Thêm vào MH chính** (Add to Home Screen)
@@ -48,26 +52,37 @@ Muốn dùng trên iPhone, app cần được đưa lên một địa chỉ **ht
 
 ## Kết nối Strava (lấy dữ liệu Coros / Garmin)
 
+App dùng **một Strava app dùng chung** + **Netlify Function** giữ Client Secret trên
+server. Người dùng cuối chỉ bấm **1 nút "Kết nối Strava"** — không phải nhập mã gì.
+
+### Người deploy cài đặt (1 lần)
+
+**Bước 1 — tạo Strava app dùng chung** tại https://www.strava.com/settings/api:
+- **Website**: địa chỉ app (vd `https://ten-gi-do.netlify.app`)
+- **Authorization Callback Domain**: chỉ tên miền, KHÔNG có `https://` (vd `ten-gi-do.netlify.app`)
+- Copy **Client ID** và **Client Secret**
+
+**Bước 2 — khai báo biến môi trường trên Netlify:**
+Site settings → Environment variables → thêm:
+- `STRAVA_CLIENT_ID` = Client ID
+- `STRAVA_CLIENT_SECRET` = Client Secret  🔒 (chỉ nằm trên server, không lộ ra trình duyệt)
+
+Sau đó **Deploy lại** site để function nhận biến mới. Function nằm ở
+`netlify/functions/strava-token.js`, cấu hình trong `netlify.toml`.
+
+### Người dùng cuối
+
 **Bước 0 — nối đồng hồ vào Strava (nếu chưa):**
 - Coros: app Coros → Profile → Settings → 3rd Party Apps → Strava
 - Garmin: app Garmin Connect → Cài đặt → Ứng dụng được kết nối → Strava
 
-**Bước 1 — tạo API app cá nhân trên Strava (1 lần, ~2 phút):**
-1. Đăng nhập https://www.strava.com/settings/api
-2. Điền form tạo app:
-   - **Website**: địa chỉ app của bạn (vd `https://ten-gi-do.netlify.app`)
-   - **Authorization Callback Domain**: chỉ tên miền, KHÔNG có `https://` (vd `ten-gi-do.netlify.app`)
-   - Các mục khác điền tùy ý
-3. Copy **Client ID** và **Client Secret**
+**Bước 1:** Cài đặt (hoặc tab Tập luyện) → **Kết nối Strava** → đăng nhập & cấp quyền → xong.
 
-**Bước 2 — trong app:** Cài đặt → mục Strava API → dán Client ID + Secret →
-**Lưu & Kết nối Strava** → cấp quyền → xong.
-
-**Bước 3:** Tab Tập luyện → **🔄 Đồng bộ**. Mỗi buổi tập sẽ được thêm đúng ngày,
+**Bước 2:** Tab Tập luyện → **🔄 Đồng bộ**. Mỗi buổi tập được thêm đúng ngày,
 kèm calo do đồng hồ đo (chính xác hơn ước tính).
 
-> 🔒 Client ID/Secret và token chỉ lưu trong localStorage trên máy bạn,
-> chỉ gửi tới `strava.com` khi xác thực/đồng bộ.
+> 🔒 Client Secret **chỉ nằm trong biến môi trường Netlify**, không bao giờ gửi xuống
+> trình duyệt. Access/refresh token của người dùng lưu trong localStorage trên máy họ.
 
 ## Ghi chú về độ chính xác
 
@@ -83,8 +98,10 @@ css/style.css         — giao diện mobile-first
 js/foods.js           — database 135+ món ăn VN
 js/calc.js            — BMR/TDEE/MET, ngày tháng
 js/store.js           — lưu trữ localStorage
-js/strava.js          — OAuth + đồng bộ Strava
+js/strava.js          — OAuth (qua function) + đồng bộ Strava
 js/app.js             — UI logic (5 màn hình, modal, chart SVG)
+netlify/functions/strava-token.js — serverless: đổi token OAuth, giữ Secret
+netlify.toml          — cấu hình publish + functions + redirect /api
 manifest.webmanifest  — cấu hình PWA
 sw.js                 — service worker (offline)
 icons/                — icon app

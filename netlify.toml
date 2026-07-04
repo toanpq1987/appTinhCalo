@@ -1,0 +1,10 @@
+# Cấu hình Netlify — site tĩnh + serverless function cho OAuth Strava
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+# Đường dẫn gọn cho function: /api/strava-token
+[[redirects]]
+  from = "/api/strava-token"
+  to = "/.netlify/functions/strava-token"
+  status = 200
