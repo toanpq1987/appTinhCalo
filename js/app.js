@@ -406,13 +406,37 @@ const App = {
       <div class="m-sub">Món sẽ được lưu để dùng lại lần sau.</div>
       <div class="field"><label>Tên món *</label><input id="cf-name" placeholder="vd: Bún mọc quán cô Ba"></div>
       <div class="field"><label>Khẩu phần</label><input id="cf-portion" placeholder="vd: 1 tô"></div>
-      <div class="field"><label>Calo (kcal) *</label><input id="cf-kcal" type="number" inputmode="numeric" placeholder="vd: 400"></div>
+      <div class="field"><label>Calo (kcal) *</label><input id="cf-kcal" type="number" inputmode="numeric" placeholder="vd: 400">
+        <div class="hint" id="cf-macro-hint" style="display:none"></div>
+      </div>
       <div class="field-row">
         <div class="field"><label>Đạm (g)</label><input id="cf-p" type="number" inputmode="decimal" placeholder="0"></div>
         <div class="field"><label>Tinh bột (g)</label><input id="cf-c" type="number" inputmode="decimal" placeholder="0"></div>
         <div class="field"><label>Béo (g)</label><input id="cf-f" type="number" inputmode="decimal" placeholder="0"></div>
       </div>
       <button class="btn" id="cf-save">Lưu món</button>`);
+
+    const $ = id => document.getElementById(id);
+    const hint = $('cf-macro-hint');
+    // Gợi ý calo suy ra từ macro (Atwater: đạm 4, tinh bột 4, béo 9 kcal/g)
+    const updateHint = () => {
+      const macroKcal = Math.round(
+        (+$('cf-p').value || 0) * 4 + (+$('cf-c').value || 0) * 4 + (+$('cf-f').value || 0) * 9
+      );
+      if (macroKcal <= 0) { hint.style.display = 'none'; return; }
+      hint.style.display = '';
+      const kcal = +$('cf-kcal').value || 0;
+      const diffPct = kcal > 0 ? Math.round(Math.abs(kcal - macroKcal) / macroKcal * 100) : 0;
+      const warn = kcal > 0 && diffPct > 10;
+      hint.style.color = warn ? 'var(--orange)' : '';
+      const useBtn = `<button type="button" id="cf-use-macro" style="background:none;border:none;padding:0;margin-left:8px;` +
+        `color:var(--green-dark);font-weight:600;font-size:inherit;cursor:pointer;text-decoration:underline">Dùng ${macroKcal}</button>`;
+      hint.innerHTML = warn
+        ? `⚠️ Từ macro ≈ <b>${macroKcal} kcal</b> — lệch ${diffPct}% so với ${kcal} bạn nhập.${useBtn}`
+        : `Từ macro ≈ <b>${macroKcal} kcal</b>.${useBtn}`;
+      $('cf-use-macro').addEventListener('click', () => { $('cf-kcal').value = macroKcal; updateHint(); });
+    };
+    ['cf-p', 'cf-c', 'cf-f', 'cf-kcal'].forEach(id => $(id).addEventListener('input', updateHint));
 
     document.getElementById('cf-save').addEventListener('click', () => {
       const name = document.getElementById('cf-name').value.trim();
