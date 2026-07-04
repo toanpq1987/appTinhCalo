@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <title>Calo Việt — Theo dõi Calo In/Out</title>
+  <meta name="description" content="App theo dõi calo nạp vào - tiêu hao hằng ngày, món ăn Việt Nam, đồng bộ Strava/Garmin/Coros">
+  <meta name="theme-color" content="#0e9f6e">
+  <!-- iOS PWA -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Calo Việt">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <h1 id="view-title">Hôm nay</h1>
+      <div id="date-nav" class="hidden">
+        <button id="date-prev" class="icon-btn" aria-label="Ngày trước">‹</button>
+        <button id="date-label" class="date-label"></button>
+        <button id="date-next" class="icon-btn" aria-label="Ngày sau">›</button>
+      </div>
+    </header>
+
+    <main id="view"></main>
+
+    <nav id="tabbar">
+      <button class="tab active" data-view="today"><span class="tab-icon">🏠</span><span>Hôm nay</span></button>
+      <button class="tab" data-view="food"><span class="tab-icon">🍜</span><span>Món ăn</span></button>
+      <button class="tab" data-view="workout"><span class="tab-icon">🏃</span><span>Tập luyện</span></button>
+      <button class="tab" data-view="stats"><span class="tab-icon">📊</span><span>Thống kê</span></button>
+      <button class="tab" data-view="settings"><span class="tab-icon">⚙️</span><span>Cài đặt</span></button>
+    </nav>
+
+    <div id="modal-root"></div>
+    <div id="toast"></div>
+  </div>
+
+  <script src="js/foods.js"></script>
+  <script src="js/calc.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/strava.js"></script>
+  <script src="libs/zxing.min.js"></script>
+  <script src="js/scanner.js"></script>
+  <script src="js/vision.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
