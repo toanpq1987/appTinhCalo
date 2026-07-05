@@ -31,6 +31,23 @@ const Vision = {
 
   PROMPT: "Đây là ảnh bữa ăn (chủ yếu món Việt Nam). Liệt kê TỪNG món ăn/đồ uống nhìn thấy. Với mỗi món: ước tính calo và macro (đạm/tinh bột/béo, gram) cho TOÀN BỘ phần nhìn thấy trong ảnh, dựa trên khẩu phần ước lượng từ kích thước tô/dĩa/ly và vật tham chiếu nếu có. Tính cả dầu mỡ chiên xào và đường ẩn theo cách chế biến phổ biến ở quán VN. Tên món bằng tiếng Việt. confidence: 'cao' nếu món rõ và khẩu phần dễ đoán, 'thấp' nếu món nước/món trộn khó ước lượng.",
 
+  // Schema đọc bảng "Thông tin dinh dưỡng" trên bao bì → giá trị per-100g
+  LABEL_SCHEMA: {
+    type: 'object',
+    properties: {
+      found: { type: 'boolean', description: 'true nếu ảnh có bảng thông tin dinh dưỡng đọc được' },
+      name: { type: 'string', description: 'Tên sản phẩm đọc được trên bao bì, rỗng nếu không rõ' },
+      kcal: { type: 'number', description: 'Năng lượng (kcal) trên 100g hoặc 100ml' },
+      protein: { type: 'number', description: 'Đạm (g) trên 100g/100ml' },
+      carbs: { type: 'number', description: 'Tinh bột / carbohydrate (g) trên 100g/100ml' },
+      fat: { type: 'number', description: 'Chất béo (g) trên 100g/100ml' },
+    },
+    required: ['found', 'name', 'kcal', 'protein', 'carbs', 'fat'],
+    additionalProperties: false,
+  },
+
+  LABEL_PROMPT: "Đây là ảnh bao bì thực phẩm. Đọc bảng 'Thông tin dinh dưỡng / Nutrition Facts'. Trả về giá trị TRÊN 100g (hoặc 100ml nếu là đồ uống). Nếu bảng chỉ ghi theo khẩu phần (per serving / mỗi phần ăn), hãy quy đổi về 100g dựa trên khối lượng khẩu phần in trên bao bì. Nếu năng lượng chỉ có kJ, quy đổi sang kcal (kcal = kJ ÷ 4.184). name = tên sản phẩm đọc được trên bao bì. found=false nếu ảnh KHÔNG có bảng dinh dưỡng rõ ràng. CHỈ đọc số thật in trên bao bì, tuyệt đối không tự bịa.",
+
   // Giá per triệu token (USD): input / output
   PRICES: {
     'claude-haiku-4-5': { in: 1, out: 5 },
@@ -143,7 +160,7 @@ const Vision = {
   },
 
   // ---------- Gọi API + parse → { parsed, costText } ----------
-  async analyze(b64) {
+  async analyze(b64, schema = this.SCHEMA, prompt = this.PROMPT) {
     const cfg = this.cfg();
     const model = cfg.model || 'claude-haiku-4-5';
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -157,12 +174,12 @@ const Vision = {
       body: JSON.stringify({
         model,
         max_tokens: 2000,
-        output_config: { format: { type: 'json_schema', schema: this.SCHEMA } },
+        output_config: { format: { type: 'json_schema', schema } },
         messages: [{
           role: 'user',
           content: [
             { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
-            { type: 'text', text: this.PROMPT },
+            { type: 'text', text: prompt },
           ],
         }],
       }),
@@ -278,5 +295,41 @@ const Vision = {
       App.toast(`✅ Đã thêm ${n} món`);
       App.go('today');
     });
+  },
+
+  // ---------- Đọc bảng dinh dưỡng trên bao bì → per-100g, gọi onResult(data) ----------
+  // Dùng cho scanner khi quét mã không ra: chụp bảng dinh dưỡng, AI điền giúp form.
+  scanLabel(onResult) {
+    const cfg = this.cfg();
+    if (!cfg.apiKey) {
+      App.toast('⚠️ Cần API key ở Cài đặt → 🤖 AI phân tích ảnh');
+      return;
+    }
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment';
+    input.style.display = 'none';
+    document.body.appendChild(input);
+
+    input.addEventListener('change', async () => {
+      const file = input.files && input.files[0];
+      input.remove();
+      if (!file) return;
+      App.toast('🤖 AI đang đọc bảng dinh dưỡng...');
+      try {
+        const b64 = await this.compress(file);
+        const { parsed } = await this.analyze(b64, this.LABEL_SCHEMA, this.LABEL_PROMPT);
+        if (!parsed.found) {
+          App.toast('⚠️ Không thấy bảng dinh dưỡng — chụp rõ phần bảng số liệu hơn nhé.');
+          return;
+        }
+        onResult(parsed);
+      } catch (e) {
+        App.toast('⚠️ ' + e.message);
+      }
+    });
+
+    input.click();
   },
 };

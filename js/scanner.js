@@ -176,6 +176,7 @@ const Scanner = {
     App.modal(`
       <h3>Nhập dinh dưỡng từ bao bì</h3>
       <div class="m-sub">${note}</div>
+      <button class="btn secondary" id="mb-ai" style="margin-bottom:14px">📸 Chụp bảng dinh dưỡng — AI đọc giúp</button>
       <div class="field"><label>Tên món *</label><input id="mb-name" placeholder="vd: Sữa tươi TH true MILK"></div>
       <div class="field"><label>Calo / 100g (kcal) *</label><input id="mb-kcal" type="number" inputmode="numeric" placeholder="vd: 65"></div>
       <div class="field-row">
@@ -183,8 +184,20 @@ const Scanner = {
         <div class="field"><label>Tinh bột / 100g</label><input id="mb-c" type="number" inputmode="decimal" placeholder="0"></div>
         <div class="field"><label>Béo / 100g</label><input id="mb-f" type="number" inputmode="decimal" placeholder="0"></div>
       </div>
-      <div class="hint" style="margin-bottom:12px">Chỉ cần nhập 1 lần — lần sau quét mã này là ra ngay.</div>
+      <div class="hint" style="margin-bottom:12px">Chụp bảng dinh dưỡng để AI điền tự động, hoặc nhập tay. Chỉ cần 1 lần — lần sau quét mã này là ra ngay.</div>
       <button class="btn" id="mb-save">Lưu món</button>`);
+
+    const val = (id, v) => { const el = document.getElementById(id); if (v != null && v !== '') el.value = v; };
+    document.getElementById('mb-ai').addEventListener('click', () => {
+      Vision.scanLabel((d) => {
+        if (!document.getElementById('mb-name').value.trim()) val('mb-name', d.name);
+        val('mb-kcal', d.kcal ? Math.round(d.kcal) : '');
+        val('mb-p', d.protein != null ? Math.round(d.protein * 10) / 10 : '');
+        val('mb-c', d.carbs != null ? Math.round(d.carbs * 10) / 10 : '');
+        val('mb-f', d.fat != null ? Math.round(d.fat * 10) / 10 : '');
+        App.toast('✅ AI đã điền — kiểm tra lại rồi Lưu món');
+      });
+    });
 
     document.getElementById('mb-save').addEventListener('click', () => {
       const name = document.getElementById('mb-name').value.trim();
