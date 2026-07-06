@@ -21,6 +21,9 @@ const json = (statusCode, obj) => ({
 const KEY_RE = /^ck_[a-z0-9]{8,64}$/i;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+// Ngày hôm nay theo giờ Việt Nam (UTC+7) — dùng khi Shortcut không gửi date
+const vnDate = () => new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
+
 exports.handler = async (event) => {
   let store;
   try {
@@ -56,8 +59,9 @@ exports.handler = async (event) => {
     }
     if (typeof body.steps === 'string' && body.steps.includes(':')) {
       body.steps.split(',').forEach(p => { const b = p.split(':'); put(b[0], b[1]); });
-    } else if (body.date != null) {
-      put(body.date, body.steps);
+    } else if (body.steps != null) {
+      // Không gửi date -> mặc định hôm nay theo giờ VN
+      put(body.date != null ? body.date : vnDate(), body.steps);
     }
 
     if (!Object.keys(incoming).length) return json(400, { error: 'không có dữ liệu steps hợp lệ' });
