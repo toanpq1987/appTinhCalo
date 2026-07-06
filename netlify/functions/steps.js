@@ -29,7 +29,7 @@ exports.handler = async (event) => {
   try {
     store = getStore('caloviet-steps');
   } catch (e) {
-    return json(500, { error: 'Blobs chưa sẵn sàng.' });
+    return json(500, { error: 'Blobs chưa sẵn sàng', detail: (e && (e.name + ': ' + e.message)) || String(e) });
   }
 
   // ----- Đọc steps đã lưu -----
