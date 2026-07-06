@@ -3,7 +3,7 @@
 
 // Phiên bản app — PHẢI khớp số với CACHE trong sw.js (caloviet-v<APP_VERSION>).
 // Mỗi lần cập nhật: tăng số này + số trong sw.js để user biết iOS đã lấy bản mới.
-const APP_VERSION = 18;
+const APP_VERSION = 19;
 
 const MEALS = [
   { id: 'breakfast', name: 'Bữa sáng', icon: '🌅' },
