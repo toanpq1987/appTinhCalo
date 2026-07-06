@@ -1,6 +1,10 @@
 // ===== Calo Việt — App chính =====
 'use strict';
 
+// Phiên bản app — PHẢI khớp số với CACHE trong sw.js (caloviet-v<APP_VERSION>).
+// Mỗi lần cập nhật: tăng số này + số trong sw.js để user biết iOS đã lấy bản mới.
+const APP_VERSION = 15;
+
 const MEALS = [
   { id: 'breakfast', name: 'Bữa sáng', icon: '🌅' },
   { id: 'lunch',     name: 'Bữa trưa', icon: '☀️' },
@@ -954,7 +958,7 @@ const App = {
         <button class="btn danger" id="btn-reset">🗑️ Xóa toàn bộ dữ liệu</button>
       </div>
 
-      <div class="sub" style="text-align:center;padding:8px 0 20px">Calo Việt v1.0 · Made with ❤️</div>`;
+      <div class="sub" style="text-align:center;padding:8px 0 20px">Calo Việt · phiên bản ${APP_VERSION} · Made with ❤️</div>`;
 
     const $ = id => document.getElementById(id);
     const seg = $('st-gender');
