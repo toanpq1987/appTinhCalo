@@ -47,9 +47,34 @@ const App = {
 
     this.render();
 
+    // Tự đồng bộ Strava khi mở app & mỗi lần quay lại app từ nền
+    this.autoSync();
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') this.autoSync();
+    });
+
     // Service worker
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
       navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+  },
+
+  // Tự đồng bộ Strava âm thầm — có throttle để không gọi liên tục
+  async autoSync() {
+    if (!Strava.isConnected() || !navigator.onLine) return;
+    const last = Store.strava.lastSync || 0;
+    if (Date.now() - last < 20 * 60 * 1000) return; // tối đa 1 lần / 20 phút
+    try {
+      const r = await Strava.sync(7);
+      if (r.added || r.moved) {
+        this.render();
+        const parts = [];
+        if (r.added) parts.push(`+${r.added} buổi tập`);
+        if (r.moved) parts.push(`sửa ngày ${r.moved}`);
+        this.toast('🔄 Strava: ' + parts.join(', '));
+      }
+    } catch (e) {
+      console.warn('Tự sync Strava lỗi (bỏ qua):', e); // im lặng, không làm phiền
     }
   },
 

@@ -1,5 +1,5 @@
 // Service worker — cache app shell để chạy offline
-const CACHE = 'caloviet-v12';
+const CACHE = 'caloviet-v13';
 const ASSETS = [
   './',
   './index.html',
