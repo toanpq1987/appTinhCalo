@@ -121,6 +121,19 @@ const Store = {
     this.save();
   },
 
+  // Khóa đồng bộ steps qua server (iOS Shortcuts POST, app GET) — sinh 1 lần
+  get syncKey() {
+    const d = this.load();
+    if (!d.syncKey) {
+      const rnd = (self.crypto && crypto.randomUUID)
+        ? crypto.randomUUID().replace(/-/g, '')
+        : (Math.random().toString(36) + Math.random().toString(36)).replace(/[^a-z0-9]/g, '');
+      d.syncKey = 'ck_' + rnd;
+      this.save();
+    }
+    return d.syncKey;
+  },
+
   get strava() { return this.load().strava; },
   setStrava(patch) { Object.assign(this.load().strava, patch); this.save(); },
 

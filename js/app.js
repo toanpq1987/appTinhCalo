@@ -3,7 +3,7 @@
 
 // Phiên bản app — PHẢI khớp số với CACHE trong sw.js (caloviet-v<APP_VERSION>).
 // Mỗi lần cập nhật: tăng số này + số trong sw.js để user biết iOS đã lấy bản mới.
-const APP_VERSION = 15;
+const APP_VERSION = 16;
 
 const MEALS = [
   { id: 'breakfast', name: 'Bữa sáng', icon: '🌅' },
@@ -80,15 +80,34 @@ const App = {
 
     this.render();
 
-    // Tự đồng bộ Strava khi mở app & mỗi lần quay lại app từ nền
+    // Tự đồng bộ Strava + kéo steps từ server khi mở app & mỗi lần quay lại từ nền
     this.autoSync();
+    this.pullSteps();
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') this.autoSync();
+      if (document.visibilityState === 'visible') { this.autoSync(); this.pullSteps(); }
     });
 
     // Service worker
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
       navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+  },
+
+  // Kéo steps đã đồng bộ từ server (iOS Shortcuts đã POST lên) — âm thầm
+  async pullSteps() {
+    if (!navigator.onLine) return;
+    try {
+      const res = await fetch('/api/steps?key=' + encodeURIComponent(Store.syncKey));
+      if (!res.ok) return;
+      const data = await res.json();
+      const days = data.days || {};
+      let changed = false;
+      for (const [d, c] of Object.entries(days)) {
+        if (Store.daySummary(d).steps !== c) { Store.setSteps(d, c); changed = true; }
+      }
+      if (changed && (this.view === 'today' || this.view === 'stats')) this.render();
+    } catch (e) {
+      console.warn('Kéo steps lỗi (bỏ qua):', e); // im lặng, không làm phiền
     }
   },
 
@@ -931,6 +950,20 @@ const App = {
       </div>
 
       <div class="card">
+        <h2>👟 Steps từ Apple Health</h2>
+        <div class="sub" style="margin-bottom:10px">
+          Cài 1 lần iOS Shortcut để tự đẩy số bước từ Health lên mỗi ngày (chạy ngầm).
+          Dán <b>mã đồng bộ</b> này vào Shortcut:
+        </div>
+        <div class="field"><input id="sk-key" readonly value="${esc(Store.syncKey)}" style="font-family:monospace;font-size:13px"></div>
+        <div class="btn-row">
+          <button class="btn secondary" id="sk-copy">📋 Copy mã</button>
+          <button class="btn secondary" id="sk-copyurl">📋 Copy link API</button>
+        </div>
+        <div class="sub" style="margin-top:10px">🔒 Ai có mã này đều ghi được số bước của bạn — giữ riêng tư. (Chỉ là số bước, không nhạy cảm.)</div>
+      </div>
+
+      <div class="card">
         <h2>🤖 AI phân tích ảnh</h2>
         <div class="sub" style="margin-bottom:10px">
           Chụp ảnh bữa ăn, AI ước tính calo & macro. Cần API key Anthropic.
@@ -990,6 +1023,16 @@ const App = {
       this.toast('Đã ngắt kết nối Strava');
       this.render();
     });
+
+    const copyText = async (text, label) => {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(text);
+        else { const t = $('sk-key'); t.focus(); t.select(); document.execCommand('copy'); }
+        this.toast('✅ Đã copy ' + label);
+      } catch { this.toast('⚠️ Không copy được — chạm giữ để copy thủ công'); }
+    };
+    if ($('sk-copy')) $('sk-copy').addEventListener('click', () => copyText(Store.syncKey, 'mã'));
+    if ($('sk-copyurl')) $('sk-copyurl').addEventListener('click', () => copyText(location.origin + '/api/steps', 'link API'));
 
     $('ai-save').addEventListener('click', () => {
       Store.setAI({ apiKey: $('ai-key').value.trim(), model: $('ai-model').value });

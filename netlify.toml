@@ -8,3 +8,9 @@
   from = "/api/strava-token"
   to = "/.netlify/functions/strava-token"
   status = 200
+
+# Đồng bộ steps (iOS Shortcuts <-> app): /api/steps
+[[redirects]]
+  from = "/api/steps"
+  to = "/.netlify/functions/steps"
+  status = 200
