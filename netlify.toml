@@ -14,3 +14,9 @@
   from = "/api/steps"
   to = "/.netlify/functions/steps"
   status = 200
+
+# Đồng bộ giấc ngủ (iOS Shortcuts <-> app): /api/sleep
+[[redirects]]
+  from = "/api/sleep"
+  to = "/.netlify/functions/sleep"
+  status = 200

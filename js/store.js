@@ -121,6 +121,12 @@ const Store = {
     this.save();
   },
 
+  // Giấc ngủ 1 đêm {total,deep,core,rem,awake} phút (từ Apple Health qua Shortcuts)
+  setSleep(dayKey, rec) {
+    this.day(dayKey).sleep = rec;
+    this.save();
+  },
+
   // Khóa đồng bộ steps qua server (iOS Shortcuts POST, app GET) — sinh 1 lần
   get syncKey() {
     const d = this.load();

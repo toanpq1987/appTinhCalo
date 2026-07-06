@@ -3,7 +3,7 @@
 
 // Phiên bản app — PHẢI khớp số với CACHE trong sw.js (caloviet-v<APP_VERSION>).
 // Mỗi lần cập nhật: tăng số này + số trong sw.js để user biết iOS đã lấy bản mới.
-const APP_VERSION = 19;
+const APP_VERSION = 20;
 
 const MEALS = [
   { id: 'breakfast', name: 'Bữa sáng', icon: '🌅' },
@@ -11,6 +11,13 @@ const MEALS = [
   { id: 'dinner',    name: 'Bữa tối',  icon: '🌙' },
   { id: 'snack',     name: 'Ăn vặt',   icon: '🍪' },
 ];
+
+// Định dạng phút -> "7h 49min"
+function fmtDur(min) {
+  min = Math.max(0, Math.round(min || 0));
+  const h = Math.floor(min / 60), m = min % 60;
+  return h ? (m ? `${h}h ${m}min` : `${h}h`) : `${m}min`;
+}
 
 const App = {
   view: 'today',
@@ -80,11 +87,12 @@ const App = {
 
     this.render();
 
-    // Tự đồng bộ Strava + kéo steps từ server khi mở app & mỗi lần quay lại từ nền
+    // Tự đồng bộ Strava + kéo steps/giấc ngủ từ server khi mở app & khi quay lại từ nền
     this.autoSync();
     this.pullSteps();
+    this.pullSleep();
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') { this.autoSync(); this.pullSteps(); }
+      if (document.visibilityState === 'visible') { this.autoSync(); this.pullSteps(); this.pullSleep(); }
     });
 
     // Service worker
@@ -108,6 +116,24 @@ const App = {
       if (changed && (this.view === 'today' || this.view === 'stats')) this.render();
     } catch (e) {
       console.warn('Kéo steps lỗi (bỏ qua):', e); // im lặng, không làm phiền
+    }
+  },
+
+  // Kéo dữ liệu giấc ngủ từ server — âm thầm
+  async pullSleep() {
+    if (!navigator.onLine) return;
+    try {
+      const res = await fetch('/api/sleep?key=' + encodeURIComponent(Store.syncKey));
+      if (!res.ok) return;
+      const data = await res.json();
+      const days = data.days || {};
+      let changed = false;
+      for (const [d, rec] of Object.entries(days)) {
+        if (JSON.stringify(Store.day(d).sleep) !== JSON.stringify(rec)) { Store.setSleep(d, rec); changed = true; }
+      }
+      if (changed && this.view === 'today') this.render();
+    } catch (e) {
+      console.warn('Kéo giấc ngủ lỗi (bỏ qua):', e);
     }
   },
 
@@ -272,6 +298,30 @@ const App = {
         <div class="sub" style="margin-top:6px">${s.steps > 0
           ? `≈ ${stepsKcal} kcal tiêu hao khi đi bộ`
           : 'Chưa có dữ liệu bước chân. Cài iOS Shortcut để tự đẩy từ Apple Health mỗi ngày.'}</div>
+      </div>`;
+
+    // ----- Giấc ngủ (nhập từ Apple Health qua iOS Shortcuts) -----
+    const sl = Store.day(this.dayKey).sleep;
+    const slStages = [
+      { k: 'deep', label: 'Sâu', c: '#1e3a8a' },
+      { k: 'core', label: 'Nhẹ', c: '#3f83f8' },
+      { k: 'rem', label: 'REM', c: '#c7b4f8' },
+      { k: 'awake', label: 'Thức', c: '#f0a6a6' },
+    ];
+    const slHasStages = sl && slStages.some(x => sl[x.k]);
+    const slSum = sl ? slStages.reduce((a, x) => a + (sl[x.k] || 0), 0) : 0;
+    html += `
+      <div class="card">
+        <div class="meal-head">
+          <h2>🌙 Giấc ngủ</h2>
+          <span style="font-weight:700;font-size:13px;color:#6d5bd0">${sl && sl.total ? fmtDur(sl.total) : '—'}</span>
+        </div>
+        ${slHasStages ? `
+          <div style="display:flex;height:10px;border-radius:999px;overflow:hidden;background:var(--bg)">
+            ${slStages.map(x => sl[x.k] ? `<div style="width:${(sl[x.k] / slSum * 100).toFixed(1)}%;background:${x.c}"></div>` : '').join('')}
+          </div>
+          <div class="sub" style="margin-top:6px">${slStages.filter(x => sl[x.k]).map(x => `<span style="color:${x.c}">●</span> ${x.label} ${fmtDur(sl[x.k])}`).join(' · ')}</div>`
+        : `<div class="sub">${sl && sl.total ? '(chưa có chi tiết giai đoạn)' : 'Chưa có dữ liệu giấc ngủ. Cài iOS Shortcut đọc từ Apple Health.'}</div>`}
       </div>`;
 
     // Banner nhắc cam kết vận động — tính cả bước chân, lấy max để không đếm trùng
