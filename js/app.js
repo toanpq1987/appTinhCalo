@@ -37,6 +37,35 @@ const App = {
       } catch (e) { this.toast('⚠️ ' + e.message); }
     }
 
+    // Nhận số bước từ iOS Shortcuts:
+    //   ?steps=8500                              -> hôm nay
+    //   ?steps=8500&date=2026-07-06              -> 1 ngày cụ thể
+    //   ?steps=2026-07-04:6000,2026-07-05:9000   -> nhiều ngày (tự bù ngày lỡ)
+    const sp = new URLSearchParams(location.search);
+    if (sp.has('steps')) {
+      const dateArg = sp.get('date');
+      let n = 0;
+      (sp.get('steps') || '').split(',').forEach(part => {
+        part = part.trim();
+        if (!part) return;
+        let dk, cnt;
+        if (part.includes(':')) {
+          const bits = part.split(':');
+          dk = (bits[0] || '').trim();
+          cnt = parseInt(bits[1], 10);
+        } else {
+          dk = dateArg || todayKey();
+          cnt = parseInt(part, 10);
+        }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dk) && Number.isFinite(cnt) && cnt >= 0) {
+          Store.setSteps(dk, cnt);
+          n++;
+        }
+      });
+      history.replaceState(null, '', location.pathname);
+      if (n) this.toast(`👟 Đã cập nhật bước chân (${n} ngày)`);
+    }
+
     // Tab bar
     document.querySelectorAll('.tab').forEach(btn => {
       btn.addEventListener('click', () => this.go(btn.dataset.view));
@@ -203,27 +232,46 @@ const App = {
         </div>
       </div>`;
 
-    // Banner nhắc cam kết vận động
+    // ----- Bước chân (nhập từ Apple Health qua iOS Shortcuts) -----
+    const stepsKcal = stepsToKcal(s.steps, p.weightKg);
     const plan = Store.plan;
+    const stepGoal = (plan && plan.activityKcal > 0) ? kcalToSteps(plan.activityKcal, p.weightKg) : 10000;
+    const stepGoalMet = stepGoal > 0 && s.steps >= stepGoal;
+    html += `
+      <div class="card">
+        <div class="meal-head">
+          <h2>👟 Bước chân</h2>
+          <span style="font-weight:700;font-size:13px;color:${stepGoalMet ? 'var(--green-dark)' : 'var(--blue)'}">${s.steps.toLocaleString('vi-VN')} / ${stepGoal.toLocaleString('vi-VN')}</span>
+        </div>
+        <div style="background:var(--bg);border-radius:999px;height:8px;overflow:hidden">
+          <div style="background:${stepGoalMet ? 'var(--green)' : 'var(--blue)'};height:100%;width:${stepGoal > 0 ? Math.min(100, Math.round(s.steps / stepGoal * 100)) : 0}%"></div>
+        </div>
+        <div class="sub" style="margin-top:6px">${s.steps > 0
+          ? `≈ ${stepsKcal} kcal tiêu hao khi đi bộ`
+          : 'Chưa có dữ liệu bước chân. Cài iOS Shortcut để tự đẩy từ Apple Health mỗi ngày.'}</div>
+      </div>`;
+
+    // Banner nhắc cam kết vận động — tính cả bước chân, lấy max để không đếm trùng
     if (plan && plan.activityKcal > 0) {
       const A = plan.activityKcal;
-      const met = s.kOut >= A;
-      const missing = A - s.kOut;
+      const moveK = Math.max(s.kOut, stepsKcal);
+      const met = moveK >= A;
+      const missing = Math.max(0, A - moveK);
       const isToday = this.dayKey === todayKey();
       const isPast = this.dayKey < todayKey();
       html += `
         <div class="card" style="border-left:4px solid ${met ? 'var(--green)' : 'var(--orange)'}">
           <div class="meal-head">
             <h2>${met ? '✅' : isPast ? '❌' : '⏳'} Cam kết vận động</h2>
-            <span class="kcal" style="color:${met ? 'var(--green-dark)' : 'var(--orange)'}">${s.kOut}/${A} kcal</span>
+            <span class="kcal" style="color:${met ? 'var(--green-dark)' : 'var(--orange)'}">${moveK}/${A} kcal</span>
           </div>
           <div style="background:var(--bg);border-radius:999px;height:8px;overflow:hidden">
-            <div style="background:${met ? 'var(--green)' : 'var(--orange)'};height:100%;width:${Math.min(100, Math.round(s.kOut / A * 100))}%"></div>
+            <div style="background:${met ? 'var(--green)' : 'var(--orange)'};height:100%;width:${Math.min(100, Math.round(moveK / A * 100))}%"></div>
           </div>
           ${met
-            ? '<div class="sub" style="margin-top:6px">Đã đạt cam kết 💪 Phần calo được ăn hôm nay đầy đủ như kế hoạch.</div>'
+            ? '<div class="sub" style="margin-top:6px">Đã đạt cam kết vận động hôm nay 💪 (tính cả đi bộ + buổi tập).</div>'
             : isToday
-              ? `<div class="sub" style="margin-top:6px">Còn thiếu <b>${missing} kcal</b> ≈ <b>${kcalToSteps(missing, p.weightKg).toLocaleString('vi-VN')} bước đi bộ</b>. Chưa tập đủ thì phần được ăn hôm nay hụt tương ứng — tranh thủ vận động nhé!</div>`
+              ? `<div class="sub" style="margin-top:6px">Còn thiếu <b>${missing} kcal</b> ≈ <b>${kcalToSteps(missing, p.weightKg).toLocaleString('vi-VN')} bước</b> nữa — tranh thủ vận động nhé!</div>`
               : isPast
                 ? `<div class="sub" style="margin-top:6px">Ngày này thiếu ${missing} kcal so với cam kết.</div>`
                 : ''}
@@ -678,7 +726,8 @@ const App = {
           ${plan.activityKcal ? (() => {
             let met7 = 0;
             for (let i = 0; i < 7; i++) {
-              if (Store.daySummary(shiftDate(todayKey(), -i)).kOut >= plan.activityKcal) met7++;
+              const sm = Store.daySummary(shiftDate(todayKey(), -i));
+              if (Math.max(sm.kOut, stepsToKcal(sm.steps, p.weightKg)) >= plan.activityKcal) met7++;
             }
             return `<div class="sub" style="margin-top:10px">🏃 Cam kết tập: <b>${plan.activityKcal} kcal/ngày</b> (~${kcalToSteps(plan.activityKcal, p.weightKg).toLocaleString('vi-VN')} bước) · đạt <b>${met7}/7</b> ngày gần nhất</div>`;
           })() : ''}

@@ -115,6 +115,12 @@ const Store = {
   get plan() { return this.load().plan; },
   setPlan(p) { this.load().plan = p; this.save(); },
 
+  // Số bước 1 ngày (nhập từ Apple Health qua iOS Shortcuts)
+  setSteps(dayKey, steps) {
+    this.day(dayKey).steps = Math.max(0, Math.round(steps));
+    this.save();
+  },
+
   get strava() { return this.load().strava; },
   setStrava(patch) { Object.assign(this.load().strava, patch); this.save(); },
 
@@ -129,7 +135,7 @@ const Store = {
     const protein = d.meals.reduce((s, m) => s + (m.protein || 0), 0);
     const carbs = d.meals.reduce((s, m) => s + (m.carbs || 0), 0);
     const fat = d.meals.reduce((s, m) => s + (m.fat || 0), 0);
-    return { kIn: Math.round(kIn), kOut: Math.round(kOut), protein: Math.round(protein), carbs: Math.round(carbs), fat: Math.round(fat) };
+    return { kIn: Math.round(kIn), kOut: Math.round(kOut), protein: Math.round(protein), carbs: Math.round(carbs), fat: Math.round(fat), steps: d.steps || 0 };
   },
 
   exportJSON() { return JSON.stringify(this.load(), null, 2); },
