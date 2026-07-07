@@ -3,7 +3,7 @@
 
 // Phiên bản app — PHẢI khớp số với CACHE trong sw.js (caloviet-v<APP_VERSION>).
 // Mỗi lần cập nhật: tăng số này + số trong sw.js để user biết iOS đã lấy bản mới.
-const APP_VERSION = 21;
+const APP_VERSION = 22;
 
 const MEALS = [
   { id: 'breakfast', name: 'Bữa sáng', icon: '🌅' },
@@ -17,6 +17,11 @@ function fmtDur(min) {
   min = Math.max(0, Math.round(min || 0));
   const h = Math.floor(min / 60), m = min % 60;
   return h ? (m ? `${h}h ${m}min` : `${h}h`) : `${m}min`;
+}
+
+// Đọc số thập phân, chấp nhận cả dấu phẩy (bàn phím VN) lẫn dấu chấm
+function parseNum(v) {
+  return parseFloat(String(v == null ? '' : v).replace(',', '.'));
 }
 
 const App = {
@@ -202,7 +207,7 @@ const App = {
           <div class="field"><label>Tuổi</label><input id="ob-age" type="number" inputmode="numeric" value="30" min="10" max="100"></div>
           <div class="field"><label>Chiều cao (cm)</label><input id="ob-height" type="number" inputmode="numeric" value="168" min="120" max="220"></div>
         </div>
-        <div class="field"><label>Cân nặng (kg)</label><input id="ob-weight" type="number" inputmode="decimal" value="65" min="30" max="200" step="0.1"></div>
+        <div class="field"><label>Cân nặng (kg)</label><input id="ob-weight" type="text" inputmode="decimal" value="65"></div>
         <div class="field"><label>Mức vận động hằng ngày (KHÔNG tính buổi tập)</label>
           <select id="ob-activity">${ACTIVITY_LEVELS.map(a => `<option value="${a.id}">${a.label}</option>`).join('')}</select>
           <div class="hint">Buổi tập (chạy, gym, Strava...) sẽ được cộng riêng để không tính trùng.</div>
@@ -224,7 +229,7 @@ const App = {
         gender: seg.querySelector('.active').dataset.v,
         age: +document.getElementById('ob-age').value || 30,
         heightCm: +document.getElementById('ob-height').value || 168,
-        weightKg: +document.getElementById('ob-weight').value || 65,
+        weightKg: parseNum(document.getElementById('ob-weight').value) || 65,
         activity: document.getElementById('ob-activity').value,
         goal: document.getElementById('ob-goal').value,
       };
@@ -862,10 +867,10 @@ const App = {
       this.modal(`
         <h3>Cân nặng hôm nay</h3>
         <div class="field"><label>Cân nặng (kg)</label>
-          <input id="wt-kg" type="number" inputmode="decimal" step="0.1" value="${p.weightKg}"></div>
+          <input id="wt-kg" type="text" inputmode="decimal" value="${p.weightKg}"></div>
         <button class="btn" id="wt-save">Lưu</button>`);
       document.getElementById('wt-save').addEventListener('click', () => {
-        const kg = +document.getElementById('wt-kg').value;
+        const kg = parseNum(document.getElementById('wt-kg').value);
         if (!kg || kg < 25 || kg > 250) { this.toast('⚠️ Giá trị không hợp lệ'); return; }
         Store.addWeight(kg);
         this.closeModal();
@@ -884,7 +889,7 @@ const App = {
       <div class="m-sub">Hiện tại: <b>${p.weightKg} kg</b> · TDEE nền ${calcTDEE(p)} kcal/ngày</div>
       <div class="field-row">
         <div class="field"><label>Cân nặng đích (kg)</label>
-          <input id="gp-kg" type="number" step="0.1" inputmode="decimal" value="${plan ? plan.targetKg : ''}" placeholder="vd: 68"></div>
+          <input id="gp-kg" type="text" inputmode="decimal" value="${plan ? plan.targetKg : ''}" placeholder="vd: 68"></div>
         <div class="field"><label>Ngày muốn đạt</label>
           <input id="gp-date" type="date" min="${tomorrow}" value="${plan ? plan.date : ''}"></div>
       </div>
@@ -913,7 +918,7 @@ const App = {
     });
 
     const upd = () => {
-      const kg = parseFloat($('gp-kg').value);
+      const kg = parseNum($('gp-kg').value);
       const date = $('gp-date').value;
       const act = parseInt($('gp-act').value) || 0;
       const box = $('gp-preview'), btn = $('gp-save');
@@ -944,7 +949,7 @@ const App = {
     upd();
 
     $('gp-save').addEventListener('click', () => {
-      const kg = parseFloat($('gp-kg').value);
+      const kg = parseNum($('gp-kg').value);
       const date = $('gp-date').value;
       const act = parseInt($('gp-act').value) || 0;
       const r = calcPlan(p, { targetKg: kg, date, activityKcal: act });
@@ -974,7 +979,7 @@ const App = {
         <div class="field-row">
           <div class="field"><label>Tuổi</label><input id="st-age" type="number" value="${p.age}"></div>
           <div class="field"><label>Cao (cm)</label><input id="st-height" type="number" value="${p.heightCm}"></div>
-          <div class="field"><label>Nặng (kg)</label><input id="st-weight" type="number" step="0.1" value="${p.weightKg}"></div>
+          <div class="field"><label>Nặng (kg)</label><input id="st-weight" type="text" inputmode="decimal" value="${p.weightKg}"></div>
         </div>
         <div class="field"><label>Mức vận động nền</label>
           <select id="st-activity">${ACTIVITY_LEVELS.map(a => `<option value="${a.id}" ${p.activity === a.id ? 'selected' : ''}>${a.label}</option>`).join('')}</select></div>
@@ -1056,7 +1061,7 @@ const App = {
         gender: seg.querySelector('.active').dataset.v,
         age: +$('st-age').value || p.age,
         heightCm: +$('st-height').value || p.heightCm,
-        weightKg: +$('st-weight').value || p.weightKg,
+        weightKg: parseNum($('st-weight').value) || p.weightKg,
         activity: $('st-activity').value,
         goal: $('st-goal').value,
         targetOverride: +$('st-override').value || null,
