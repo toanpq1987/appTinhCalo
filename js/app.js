@@ -3,7 +3,7 @@
 
 // Phiên bản app — PHẢI khớp số với CACHE trong sw.js (caloviet-v<APP_VERSION>).
 // Mỗi lần cập nhật: tăng số này + số trong sw.js để user biết iOS đã lấy bản mới.
-const APP_VERSION = 22;
+const APP_VERSION = 23;
 
 const MEALS = [
   { id: 'breakfast', name: 'Bữa sáng', icon: '🌅' },
@@ -429,6 +429,7 @@ const App = {
       </div>
       <div id="food-list"></div>
       <button class="btn secondary" id="btn-custom-food" style="margin-top:6px">＋ Tạo món mới (tự nhập calo)</button>
+      <button class="btn secondary" id="btn-recipe" style="margin-top:6px">🍲 Tạo món ghép (nhiều nguyên liệu)</button>
       <div class="sub" style="text-align:center;margin-top:10px">Calo ước tính theo khẩu phần phổ biến — có thể chỉnh số lượng khi thêm.</div>`;
 
     const input = document.getElementById('food-search');
@@ -436,6 +437,10 @@ const App = {
     document.getElementById('food-chips').querySelectorAll('.chip').forEach(c =>
       c.addEventListener('click', () => { this.foodCat = c.dataset.cat; this.render(); }));
     document.getElementById('btn-custom-food').addEventListener('click', () => this.openCustomFoodModal());
+    document.getElementById('btn-recipe').addEventListener('click', () => {
+      this.recipeDraft = { name: '', servings: 1, ingredients: [] };
+      this.openRecipeModal();
+    });
     document.getElementById('btn-scan').addEventListener('click', () => Scanner.open());
     document.getElementById('btn-vision').addEventListener('click', () => Vision.open());
 
@@ -602,6 +607,204 @@ const App = {
       });
       this.closeModal();
       this.openPortionModal(f);
+    });
+  },
+
+  // ===== Món ghép (nhiều nguyên liệu) =====
+  openRecipeModal() {
+    const d = this.recipeDraft || (this.recipeDraft = { name: '', servings: 1, ingredients: [] });
+    const g1 = v => +(v || 0).toFixed(1);
+    const sum = d.ingredients.reduce((a, x) => ({
+      kcal: a.kcal + x.kcal, p: a.p + x.protein, c: a.c + x.carbs, f: a.f + x.fat,
+    }), { kcal: 0, p: 0, c: 0, f: 0 });
+    const sv = Math.max(1, d.servings || 1);
+    const perK = Math.round(sum.kcal / sv);
+
+    this.modal(`
+      <h3>🍲 Tạo món ghép</h3>
+      <div class="m-sub">Ghép nhiều nguyên liệu → app tự cộng calo & macro, chia số phần.</div>
+      <div class="field"><label>Tên món *</label><input id="rc-name" placeholder="vd: Ốc chuối đậu" value="${esc(d.name)}"></div>
+
+      <label style="font-weight:600;font-size:13px">Nguyên liệu (${d.ingredients.length})</label>
+      <div id="rc-list" style="margin:6px 0 10px">
+        ${d.ingredients.length ? d.ingredients.map((x, i) => `
+          <div class="entry">
+            <div><div class="e-name">${esc(x.name)}</div>
+              <div class="e-sub">${esc(x.portionLabel || '')} · Đ${g1(x.protein)} T${g1(x.carbs)} B${g1(x.fat)}</div></div>
+            <div style="display:flex;align-items:center">
+              <span class="e-kcal" style="color:var(--orange)">${Math.round(x.kcal)}</span>
+              <button class="e-del" data-rc-del="${i}">✕</button>
+            </div>
+          </div>`).join('') : '<div class="empty-note">Chưa có nguyên liệu — bấm bên dưới để thêm.</div>'}
+      </div>
+      <button class="btn secondary" id="rc-add-ing" style="margin-bottom:12px">＋ Thêm nguyên liệu</button>
+
+      <div class="field"><label>Chia thành mấy phần?</label>
+        <input id="rc-servings" type="number" inputmode="numeric" min="1" value="${sv}">
+        <div class="hint">Nấu 1 nồi ăn 3 bát → nhập 3. Món lưu = 1 phần (1 bát).</div>
+      </div>
+
+      <div class="card" style="background:var(--bg);padding:12px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between"><span class="sub">Tổng cả món</span><b id="rc-total">${Math.round(sum.kcal)} kcal</b></div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px"><span class="sub">Mỗi phần</span><b id="rc-per" style="color:var(--green-dark)">${perK} kcal · Đ${g1(sum.p / sv)} T${g1(sum.c / sv)} B${g1(sum.f / sv)}</b></div>
+      </div>
+
+      <button class="btn" id="rc-save">Lưu món — 1 phần = <span id="rc-save-k">${perK}</span> kcal</button>`);
+
+    const $ = id => document.getElementById(id);
+    const saveInputs = () => {
+      d.name = $('rc-name').value;
+      d.servings = Math.max(1, parseInt($('rc-servings').value) || 1);
+    };
+    const recompute = () => {
+      const sv2 = Math.max(1, parseInt($('rc-servings').value) || 1);
+      $('rc-total').textContent = Math.round(sum.kcal) + ' kcal';
+      $('rc-per').textContent = `${Math.round(sum.kcal / sv2)} kcal · Đ${g1(sum.p / sv2)} T${g1(sum.c / sv2)} B${g1(sum.f / sv2)}`;
+      $('rc-save-k').textContent = Math.round(sum.kcal / sv2);
+    };
+
+    $('rc-name').addEventListener('input', () => { d.name = $('rc-name').value; });
+    $('rc-servings').addEventListener('input', recompute);
+    $('rc-add-ing').addEventListener('click', () => { saveInputs(); this.openRecipeIngredientPicker(); });
+    this.el.modalRoot.querySelectorAll('[data-rc-del]').forEach(b =>
+      b.addEventListener('click', () => { saveInputs(); d.ingredients.splice(+b.dataset.rcDel, 1); this.openRecipeModal(); }));
+
+    $('rc-save').addEventListener('click', () => {
+      saveInputs();
+      const name = (d.name || '').trim();
+      if (!name) { this.toast('⚠️ Nhập tên món'); return; }
+      if (!d.ingredients.length) { this.toast('⚠️ Thêm ít nhất 1 nguyên liệu'); return; }
+      const svN = Math.max(1, d.servings || 1);
+      const r1 = v => Math.round((v / svN) * 10) / 10;
+      const saved = Store.addCustomFood({
+        name, portion: '1 phần', cat: 'dish',
+        kcal: Math.round(sum.kcal / svN), protein: r1(sum.p), carbs: r1(sum.c), fat: r1(sum.f),
+        composite: true, servings: svN,
+        ingredients: d.ingredients.map(x => ({
+          name: x.name, portionLabel: x.portionLabel,
+          kcal: Math.round(x.kcal), protein: g1(x.protein), carbs: g1(x.carbs), fat: g1(x.fat),
+        })),
+      });
+      this.recipeDraft = null;
+      this.closeModal();
+      this.toast('✅ Đã tạo món ghép: ' + saved.name);
+      this.openPortionModal(saved);
+    });
+  },
+
+  // Chọn nguyên liệu để thêm vào món ghép
+  openRecipeIngredientPicker() {
+    this.modal(`
+      <h3>Thêm nguyên liệu</h3>
+      <input class="search-box" id="ri-search" type="search" placeholder="Tìm... (vd: thit ba chi, dau phu)">
+      <div id="ri-list" style="margin-top:10px;max-height:46vh;overflow:auto"></div>
+      <button class="btn secondary" id="ri-custom" style="margin-top:10px">✏️ Nhập tay (nguyên liệu chưa có)</button>
+      <button class="btn secondary" id="ri-back" style="margin-top:8px">← Quay lại món</button>`);
+
+    const $ = id => document.getElementById(id);
+    const renderList = () => {
+      const q = stripVN(($('ri-search').value || '').trim());
+      let foods = Store.allFoods();
+      if (q) foods = foods.filter(f => stripVN(f.name).includes(q));
+      foods = foods.slice(0, 40);
+      $('ri-list').innerHTML = foods.map(f => `
+        <div class="food-item" data-food="${f.id}">
+          <div><div class="f-name">${f.custom ? '⭐ ' : ''}${esc(f.name)}</div>
+            <div class="f-sub">${esc(f.portion || '')} · ${f.kcal} kcal</div></div>
+        </div>`).join('') || '<div class="empty-note">Không thấy — thử nhập tay bên dưới 👇</div>';
+      $('ri-list').querySelectorAll('.food-item').forEach(el =>
+        el.addEventListener('click', () => this.openRecipePortion(Store.findFood(el.dataset.food))));
+    };
+    $('ri-search').addEventListener('input', renderList);
+    $('ri-back').addEventListener('click', () => this.openRecipeModal());
+    $('ri-custom').addEventListener('click', () => this.openRecipeCustomIngredient());
+    renderList();
+  },
+
+  // Chọn khẩu phần cho 1 nguyên liệu rồi thêm vào món ghép
+  openRecipePortion(food) {
+    if (!food) return;
+    let qty = 1;
+    const gMatch = (food.portion || '').match(/(\d+(?:[.,]\d+)?)\s*(g|gram|ml)\b/i);
+    const baseG = gMatch ? parseFloat(gMatch[1].replace(',', '.')) : 0;
+    const unit = gMatch ? (gMatch[2].toLowerCase() === 'ml' ? 'ml' : 'g') : '';
+
+    this.modal(`
+      <h3>${esc(food.name)}</h3>
+      <div class="m-sub">${esc(food.portion || '')} · ${food.kcal} kcal / phần</div>
+      <div class="qty-row"><button id="q-minus">−</button>
+        <input class="qty-input" id="q-val" type="number" inputmode="decimal" step="0.1" min="0.1" value="1">
+        <button id="q-plus">＋</button></div>
+      <div class="sub" style="text-align:center;margin-top:-8px;margin-bottom:12px">số phần</div>
+      ${baseG ? `<div class="field"><label>Hoặc nhập chính xác (${unit})</label>
+        <input id="q-grams" type="number" inputmode="decimal" min="1" value="${baseG}">
+        <div class="hint">1 phần = ${baseG}${unit}</div></div>` : ''}
+      <div class="macros" style="margin:0 0 14px">
+        <div class="macro"><div class="m-val" id="q-p">0g</div><div class="m-name">Đạm</div></div>
+        <div class="macro"><div class="m-val" id="q-c">0g</div><div class="m-name">Tinh bột</div></div>
+        <div class="macro"><div class="m-val" id="q-f">0g</div><div class="m-name">Béo</div></div>
+      </div>
+      <button class="btn" id="q-add">Thêm vào món — <span id="q-kcal">${food.kcal}</span> kcal</button>
+      <button class="btn secondary" id="q-back" style="margin-top:8px">← Quay lại</button>`);
+
+    const $ = id => document.getElementById(id);
+    const clamp = v => Math.min(50, Math.max(0.1, v));
+    const round2 = v => Math.round(v * 100) / 100;
+    const g1 = v => +(v || 0).toFixed(1);
+    const upd = (from) => {
+      $('q-kcal').textContent = Math.round(food.kcal * qty);
+      $('q-p').textContent = g1((food.protein || 0) * qty) + 'g';
+      $('q-c').textContent = g1((food.carbs || 0) * qty) + 'g';
+      $('q-f').textContent = g1((food.fat || 0) * qty) + 'g';
+      if (from !== 'qty') $('q-val').value = round2(qty);
+      if (baseG && from !== 'grams') $('q-grams').value = Math.round(qty * baseG);
+    };
+    upd();
+    $('q-minus').addEventListener('click', () => { qty = clamp(round2(qty - 0.5)); upd(); });
+    $('q-plus').addEventListener('click', () => { qty = clamp(round2(qty + 0.5)); upd(); });
+    $('q-val').addEventListener('input', () => { const v = parseFloat($('q-val').value); if (v > 0) { qty = clamp(round2(v)); upd('qty'); } });
+    if (baseG) $('q-grams').addEventListener('input', () => { const gv = parseFloat($('q-grams').value); if (gv > 0) { qty = clamp(round2(gv / baseG)); upd('grams'); } });
+    $('q-back').addEventListener('click', () => this.openRecipeIngredientPicker());
+    $('q-add').addEventListener('click', () => {
+      qty = round2(qty);
+      const portionLabel = baseG ? Math.round(qty * baseG) + unit
+        : (qty === 1 ? (food.portion || '1 phần') : qty + ' × ' + (food.portion || 'phần'));
+      this.recipeDraft.ingredients.push({
+        name: food.name, portionLabel,
+        kcal: food.kcal * qty, protein: (food.protein || 0) * qty,
+        carbs: (food.carbs || 0) * qty, fat: (food.fat || 0) * qty,
+      });
+      this.openRecipeModal();
+    });
+  },
+
+  // Nhập tay 1 nguyên liệu (cho đúng lượng đã dùng) khi DB không có
+  openRecipeCustomIngredient() {
+    this.modal(`
+      <h3>Nhập nguyên liệu tay</h3>
+      <div class="m-sub">Nhập cho ĐÚNG lượng bạn dùng trong món (không phải per 100g).</div>
+      <div class="field"><label>Tên *</label><input id="ric-name" placeholder="vd: Ốc đã sơ chế (100g)"></div>
+      <div class="field"><label>Calo (kcal) *</label><input id="ric-kcal" type="text" inputmode="decimal" placeholder="vd: 90"></div>
+      <div class="field-row">
+        <div class="field"><label>Đạm (g)</label><input id="ric-p" type="text" inputmode="decimal" placeholder="0"></div>
+        <div class="field"><label>Tinh bột (g)</label><input id="ric-c" type="text" inputmode="decimal" placeholder="0"></div>
+        <div class="field"><label>Béo (g)</label><input id="ric-f" type="text" inputmode="decimal" placeholder="0"></div>
+      </div>
+      <button class="btn" id="ric-add">Thêm vào món</button>
+      <button class="btn secondary" id="ric-back" style="margin-top:8px">← Quay lại</button>`);
+
+    const $ = id => document.getElementById(id);
+    $('ric-back').addEventListener('click', () => this.openRecipeIngredientPicker());
+    $('ric-add').addEventListener('click', () => {
+      const name = $('ric-name').value.trim();
+      const kcal = parseNum($('ric-kcal').value);
+      if (!name || !kcal) { this.toast('⚠️ Cần tên và calo'); return; }
+      this.recipeDraft.ingredients.push({
+        name, portionLabel: 'nhập tay',
+        kcal, protein: parseNum($('ric-p').value) || 0,
+        carbs: parseNum($('ric-c').value) || 0, fat: parseNum($('ric-f').value) || 0,
+      });
+      this.openRecipeModal();
     });
   },
 
