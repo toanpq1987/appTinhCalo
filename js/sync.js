@@ -78,9 +78,21 @@ const Sync = {
     this.status = 'local';
   },
 
-  // Đăng nhập xong: kéo cloud về, gộp theo updatedAt (mới hơn thắng)
+  // Có dữ liệu thật hay không (để KHÔNG BAO GIỜ đè local có data bằng cloud trống)
+  _hasContent(d) {
+    if (!d || typeof d !== 'object') return false;
+    const days = d.days || {};
+    const anyDay = Object.keys(days).some(k => {
+      const day = days[k] || {};
+      return (day.meals && day.meals.length) || (day.workouts && day.workouts.length) || day.steps || day.sleep;
+    });
+    return anyDay || (d.customFoods && d.customFoods.length) || (d.weights && d.weights.length) || !!d.plan;
+  },
+
+  // Đăng nhập xong: gộp an toàn — chỉ lấy cloud khi cloud CÓ nội dung và mới hơn (hoặc local trống)
   async onLogin() {
-    if (!this.isOn()) return;
+    if (!this.isOn() || this._busy) return;
+    this._busy = true;
     this.status = 'syncing'; this._render();
     try {
       const { data, error } = await this.client
@@ -89,20 +101,24 @@ const Sync = {
 
       const cloud = data && data.data ? data.data : null;
       const local = Store.load();
-      const localT = local.updatedAt || 0;
+      const cloudHas = this._hasContent(cloud);
+      const localHas = this._hasContent(local);
       const cloudT = (cloud && cloud.updatedAt) || 0;
+      const localT = local.updatedAt || 0;
 
-      if (cloud && cloudT >= localT) {
-        Store.replaceAll(cloud);        // cloud mới hơn -> dùng cloud
+      if (cloudHas && (!localHas || cloudT > localT)) {
+        Store.replaceAll(cloud);           // cloud có nội dung & (local trống hoặc cloud mới hơn)
         this.status = 'synced';
         this._render(true);
       } else {
-        await this.pushNow();           // local mới hơn (hoặc cloud rỗng) -> đẩy local lên
+        await this.pushNow();              // còn lại: đẩy local lên — KHÔNG đè local bằng cloud trống
       }
     } catch (e) {
       console.warn('Sync onLogin lỗi:', e);
       this.status = navigator.onLine ? 'error' : 'offline';
       this._render();
+    } finally {
+      this._busy = false;
     }
   },
 
@@ -115,9 +131,11 @@ const Sync = {
   async pushNow() {
     if (!this.isOn()) return;
     if (!navigator.onLine) { this.status = 'offline'; this._render(); return; }
+    const data = Store.load();
+    // Đừng đẩy dữ liệu TRỐNG đè lên cloud (bảo vệ bản cloud khỏi bị xoá nhầm)
+    if (!this._hasContent(data)) { this.status = 'synced'; this._render(); return; }
     this.status = 'syncing'; this._render();
     try {
-      const data = Store.load();
       const { error } = await this.client.from(SYNC_TABLE).upsert({
         user_id: this.user.id,
         data,
