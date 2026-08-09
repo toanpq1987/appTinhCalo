@@ -103,6 +103,14 @@ const Store = {
     this.save();
   },
 
+  updateCustomFood(id, patch) {
+    const f = this.load().customFoods.find(x => x.id === id);
+    if (!f) return null;
+    Object.assign(f, patch);
+    this.save();
+    return f;
+  },
+
   allFoods() {
     // Món của tôi + món thêm sau (Supabase) + DB gốc trong code
     return [...this.load().customFoods, ...this._remoteFoods, ...FOOD_DB];

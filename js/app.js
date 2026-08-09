@@ -3,7 +3,7 @@
 
 // Phiên bản app — PHẢI khớp số với CACHE trong sw.js (caloviet-v<APP_VERSION>).
 // Mỗi lần cập nhật: tăng số này + số trong sw.js để user biết iOS đã lấy bản mới.
-const APP_VERSION = 27;
+const APP_VERSION = 28;
 
 const MEALS = [
   { id: 'breakfast', name: 'Bữa sáng', icon: '🌅' },
@@ -433,7 +433,7 @@ const App = {
         ${cats.map(([id, name]) => `<button class="chip ${this.foodCat === id ? 'active' : ''}" data-cat="${id}">${name}</button>`).join('')}
       </div>
       <div id="food-list"></div>
-      <button class="btn secondary" id="btn-custom-food" style="margin-top:6px">＋ Tạo món mới (tự nhập calo)</button>
+      <button class="btn secondary" id="btn-custom-food" style="margin-top:6px">＋ Tạo món mới (nhập theo 100g)</button>
       <button class="btn secondary" id="btn-recipe" style="margin-top:6px">🍲 Tạo món ghép (nhiều nguyên liệu)</button>
       <div class="sub" style="text-align:center;margin-top:10px">Calo ước tính theo khẩu phần phổ biến — có thể chỉnh số lượng khi thêm.</div>`;
 
@@ -516,7 +516,8 @@ const App = {
         <div class="macro"><div class="m-val" id="q-c">0g</div><div class="m-name">Tinh bột</div></div>
         <div class="macro"><div class="m-val" id="q-f">0g</div><div class="m-name">Béo</div></div>
       </div>
-      <button class="btn" id="q-add">Thêm — <span id="q-kcal">${food.kcal}</span> kcal</button>`);
+      <button class="btn" id="q-add">Thêm — <span id="q-kcal">${food.kcal}</span> kcal</button>
+      ${food.custom ? `<button class="btn secondary" id="q-edit" style="margin-top:8px">✏️ Sửa${food.composite ? ' món ghép' : ' món'}</button>` : ''}`);
 
     const $ = id => document.getElementById(id);
     const clamp = v => Math.min(20, Math.max(0.1, v));
@@ -559,34 +560,44 @@ const App = {
       this.toast(`✅ Đã thêm ${food.name}`);
       this.go('today');
     });
+
+    if ($('q-edit')) $('q-edit').addEventListener('click', () => {
+      this.closeModal();
+      if (food.composite && food.ingredients && food.ingredients.length) this.openRecipeEdit(food);
+      else this.openCustomFoodModal(food);
+    });
   },
 
-  openCustomFoodModal() {
+  openCustomFoodModal(edit) {
+    const f = edit || {};
     this.modal(`
-      <h3>Tạo món mới</h3>
-      <div class="m-sub">Món sẽ được lưu để dùng lại lần sau.</div>
-      <div class="field"><label>Tên món *</label><input id="cf-name" placeholder="vd: Bún mọc quán cô Ba"></div>
-      <div class="field"><label>Khẩu phần</label><input id="cf-portion" placeholder="vd: 1 tô"></div>
-      <div class="field"><label>Calo (kcal) *</label><input id="cf-kcal" type="number" inputmode="numeric" placeholder="vd: 400">
+      <h3>${edit ? 'Sửa món' : 'Tạo món mới'}</h3>
+      <div class="m-sub">Nên nhập <b>theo 100g</b> — sau này lúc ăn chỉ cần nhập số gram, app tự tính calo theo lượng ăn. (Hoặc đổi đơn vị sang "1 tô", "1 cái"... nếu muốn tính theo phần.)</div>
+      <div class="field"><label>Tên món *</label><input id="cf-name" placeholder="vd: Ức gà luộc" value="${esc(f.name || '')}"></div>
+      <div class="field"><label>Đơn vị</label><input id="cf-portion" placeholder="100g" value="${esc(f.portion || '100g')}">
+        <div class="hint">Giữ <b>100g</b> để cân theo gram. Số calo & macro bên dưới là <b>cho đơn vị này</b>.</div>
+      </div>
+      <div class="field"><label>Calo cho đơn vị trên (kcal) *</label><input id="cf-kcal" type="text" inputmode="decimal" placeholder="vd: 165" value="${f.kcal != null ? f.kcal : ''}">
         <div class="hint" id="cf-macro-hint" style="display:none"></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Đạm (g)</label><input id="cf-p" type="number" inputmode="decimal" placeholder="0"></div>
-        <div class="field"><label>Tinh bột (g)</label><input id="cf-c" type="number" inputmode="decimal" placeholder="0"></div>
-        <div class="field"><label>Béo (g)</label><input id="cf-f" type="number" inputmode="decimal" placeholder="0"></div>
+        <div class="field"><label>Đạm (g)</label><input id="cf-p" type="text" inputmode="decimal" placeholder="0" value="${f.protein != null ? f.protein : ''}"></div>
+        <div class="field"><label>Tinh bột (g)</label><input id="cf-c" type="text" inputmode="decimal" placeholder="0" value="${f.carbs != null ? f.carbs : ''}"></div>
+        <div class="field"><label>Béo (g)</label><input id="cf-f" type="text" inputmode="decimal" placeholder="0" value="${f.fat != null ? f.fat : ''}"></div>
       </div>
-      <button class="btn" id="cf-save">Lưu món</button>`);
+      <button class="btn" id="cf-save">${edit ? 'Lưu thay đổi' : 'Lưu món'}</button>
+      ${edit ? '<button class="btn danger" id="cf-del" style="margin-top:8px">🗑️ Xóa món</button>' : ''}`);
 
     const $ = id => document.getElementById(id);
     const hint = $('cf-macro-hint');
     // Gợi ý calo suy ra từ macro (Atwater: đạm 4, tinh bột 4, béo 9 kcal/g)
     const updateHint = () => {
       const macroKcal = Math.round(
-        (+$('cf-p').value || 0) * 4 + (+$('cf-c').value || 0) * 4 + (+$('cf-f').value || 0) * 9
+        (parseNum($('cf-p').value) || 0) * 4 + (parseNum($('cf-c').value) || 0) * 4 + (parseNum($('cf-f').value) || 0) * 9
       );
       if (macroKcal <= 0) { hint.style.display = 'none'; return; }
       hint.style.display = '';
-      const kcal = +$('cf-kcal').value || 0;
+      const kcal = parseNum($('cf-kcal').value) || 0;
       const diffPct = kcal > 0 ? Math.round(Math.abs(kcal - macroKcal) / macroKcal * 100) : 0;
       const warn = kcal > 0 && diffPct > 10;
       hint.style.color = warn ? 'var(--orange)' : '';
@@ -598,20 +609,31 @@ const App = {
       $('cf-use-macro').addEventListener('click', () => { $('cf-kcal').value = macroKcal; updateHint(); });
     };
     ['cf-p', 'cf-c', 'cf-f', 'cf-kcal'].forEach(id => $(id).addEventListener('input', updateHint));
+    updateHint();
 
-    document.getElementById('cf-save').addEventListener('click', () => {
-      const name = document.getElementById('cf-name').value.trim();
-      const kcal = +document.getElementById('cf-kcal').value;
+    $('cf-save').addEventListener('click', () => {
+      const name = $('cf-name').value.trim();
+      const kcal = parseNum($('cf-kcal').value);
       if (!name || !kcal) { this.toast('⚠️ Cần nhập tên món và calo'); return; }
-      const f = Store.addCustomFood({
-        name, portion: document.getElementById('cf-portion').value.trim() || '1 phần', kcal,
-        protein: +document.getElementById('cf-p').value || 0,
-        carbs: +document.getElementById('cf-c').value || 0,
-        fat: +document.getElementById('cf-f').value || 0,
-        cat: 'dish',
-      });
+      const patch = {
+        name, portion: $('cf-portion').value.trim() || '100g', kcal,
+        protein: parseNum($('cf-p').value) || 0,
+        carbs: parseNum($('cf-c').value) || 0,
+        fat: parseNum($('cf-f').value) || 0,
+        cat: (edit && edit.cat) || 'dish',
+      };
+      const saved = edit ? Store.updateCustomFood(edit.id, patch) : Store.addCustomFood(patch);
       this.closeModal();
-      this.openPortionModal(f);
+      if (saved) this.openPortionModal(saved);
+    });
+
+    if ($('cf-del')) $('cf-del').addEventListener('click', () => {
+      if (confirm('Xóa món "' + (edit.name || '') + '"?')) {
+        Store.removeCustomFood(edit.id);
+        this.closeModal();
+        this.toast('Đã xóa món');
+        this.go('food');
+      }
     });
   },
 
@@ -626,7 +648,7 @@ const App = {
     const perK = Math.round(sum.kcal / sv);
 
     this.modal(`
-      <h3>🍲 Tạo món ghép</h3>
+      <h3>🍲 ${d.editId ? 'Sửa món ghép' : 'Tạo món ghép'}</h3>
       <div class="m-sub">Ghép nhiều nguyên liệu → app tự cộng calo & macro, chia số phần.</div>
       <div class="field"><label>Tên món *</label><input id="rc-name" placeholder="vd: Ốc chuối đậu" value="${esc(d.name)}"></div>
 
@@ -654,7 +676,8 @@ const App = {
         <div style="display:flex;justify-content:space-between;margin-top:4px"><span class="sub">Mỗi phần</span><b id="rc-per" style="color:var(--green-dark)">${perK} kcal · Đ${g1(sum.p / sv)} T${g1(sum.c / sv)} B${g1(sum.f / sv)}</b></div>
       </div>
 
-      <button class="btn" id="rc-save">Lưu món — 1 phần = <span id="rc-save-k">${perK}</span> kcal</button>`);
+      <button class="btn" id="rc-save">${d.editId ? 'Lưu thay đổi' : 'Lưu món'} — 1 phần = <span id="rc-save-k">${perK}</span> kcal</button>
+      ${d.editId ? '<button class="btn danger" id="rc-del" style="margin-top:8px">🗑️ Xóa món ghép</button>' : ''}`);
 
     const $ = id => document.getElementById(id);
     const saveInputs = () => {
@@ -681,7 +704,7 @@ const App = {
       if (!d.ingredients.length) { this.toast('⚠️ Thêm ít nhất 1 nguyên liệu'); return; }
       const svN = Math.max(1, d.servings || 1);
       const r1 = v => Math.round((v / svN) * 10) / 10;
-      const saved = Store.addCustomFood({
+      const patch = {
         name, portion: '1 phần', cat: 'dish',
         kcal: Math.round(sum.kcal / svN), protein: r1(sum.p), carbs: r1(sum.c), fat: r1(sum.f),
         composite: true, servings: svN,
@@ -689,12 +712,37 @@ const App = {
           name: x.name, portionLabel: x.portionLabel,
           kcal: Math.round(x.kcal), protein: g1(x.protein), carbs: g1(x.carbs), fat: g1(x.fat),
         })),
-      });
+      };
+      const saved = d.editId ? Store.updateCustomFood(d.editId, patch) : Store.addCustomFood(patch);
       this.recipeDraft = null;
       this.closeModal();
-      this.toast('✅ Đã tạo món ghép: ' + saved.name);
-      this.openPortionModal(saved);
+      this.toast(d.editId ? '✅ Đã cập nhật món ghép' : '✅ Đã tạo món ghép: ' + name);
+      if (saved) this.openPortionModal(saved);
     });
+
+    if ($('rc-del')) $('rc-del').addEventListener('click', () => {
+      if (confirm('Xóa món ghép "' + (d.name || '') + '"?')) {
+        Store.removeCustomFood(d.editId);
+        this.recipeDraft = null;
+        this.closeModal();
+        this.toast('Đã xóa món ghép');
+        this.go('food');
+      }
+    });
+  },
+
+  // Mở lại 1 món ghép đã tạo để sửa (nạp nguyên liệu + số phần đã lưu)
+  openRecipeEdit(food) {
+    this.recipeDraft = {
+      name: food.name,
+      servings: food.servings || 1,
+      editId: food.id,
+      ingredients: (food.ingredients || []).map(x => ({
+        name: x.name, portionLabel: x.portionLabel,
+        kcal: +x.kcal || 0, protein: +x.protein || 0, carbs: +x.carbs || 0, fat: +x.fat || 0,
+      })),
+    };
+    this.openRecipeModal();
   },
 
   // Chọn nguyên liệu để thêm vào món ghép
