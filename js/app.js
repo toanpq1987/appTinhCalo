@@ -3,7 +3,7 @@
 
 // Phiên bản app — PHẢI khớp số với CACHE trong sw.js (caloviet-v<APP_VERSION>).
 // Mỗi lần cập nhật: tăng số này + số trong sw.js để user biết iOS đã lấy bản mới.
-const APP_VERSION = 23;
+const APP_VERSION = 24;
 
 const MEALS = [
   { id: 'breakfast', name: 'Bữa sáng', icon: '🌅' },
@@ -41,6 +41,7 @@ const App = {
 
   async init() {
     Store.load();
+    if (typeof Sync !== 'undefined') Sync.init(); // đăng nhập + đồng bộ cloud (nếu có)
 
     // Strava OAuth redirect?
     if (location.search.includes('code=')) {
@@ -1171,7 +1172,32 @@ const App = {
     const st = Store.strava;
     const target = calcTarget(p);
 
+    const sync = typeof Sync !== 'undefined' ? Sync : null;
+    const acct = !sync || !sync.isReady() ? `
+      <div class="card">
+        <h2>☁️ Tài khoản & đồng bộ</h2>
+        <div class="sub">Đồng bộ chưa sẵn sàng (thư viện chưa tải). Kiểm tra kết nối rồi mở lại app.</div>
+      </div>` : sync.isOn() ? `
+      <div class="card">
+        <h2>☁️ Tài khoản</h2>
+        <div class="sub">Đã đăng nhập: <b>${esc(sync.email())}</b></div>
+        <div class="sub" style="margin-top:4px">${sync.statusText()}</div>
+        <button class="btn secondary" id="acct-signout" style="margin-top:10px">Đăng xuất</button>
+      </div>` : `
+      <div class="card">
+        <h2>☁️ Tài khoản & đồng bộ</h2>
+        <div class="sub" style="margin-bottom:10px">Đăng nhập để đồng bộ dữ liệu (món, món ghép, bữa ăn, cân nặng, steps, giấc ngủ) giữa các máy. Không đăng nhập vẫn dùng được — dữ liệu lưu trên máy này.</div>
+        <div class="field"><label>Email</label><input id="acct-email" type="email" inputmode="email" autocapitalize="none" placeholder="ban@email.com"></div>
+        <div class="field"><label>Mật khẩu</label><input id="acct-pass" type="password" placeholder="≥ 6 ký tự"></div>
+        <div class="btn-row">
+          <button class="btn" id="acct-signin">Đăng nhập</button>
+          <button class="btn secondary" id="acct-signup">Đăng ký</button>
+        </div>
+        <div class="sub" id="acct-msg" style="margin-top:8px"></div>
+      </div>`;
+
     this.el.view.innerHTML = `
+      ${acct}
       <div class="card">
         <h2>👤 Hồ sơ</h2>
         <div class="field"><label>Giới tính</label>
@@ -1252,6 +1278,37 @@ const App = {
       <div class="sub" style="text-align:center;padding:8px 0 20px">Calo Việt · phiên bản ${APP_VERSION} · Made with ❤️</div>`;
 
     const $ = id => document.getElementById(id);
+
+    // ----- Tài khoản / đồng bộ -----
+    if ($('acct-signout')) $('acct-signout').addEventListener('click', async () => {
+      await Sync.signOut();
+      this.toast('Đã đăng xuất (dữ liệu vẫn còn trên máy)');
+      this.render();
+    });
+    const doAuth = async (mode) => {
+      const email = ($('acct-email').value || '').trim();
+      const pass = $('acct-pass').value || '';
+      const msg = $('acct-msg');
+      if (!email || pass.length < 6) { msg.textContent = '⚠️ Nhập email và mật khẩu ≥ 6 ký tự'; msg.style.color = 'var(--orange)'; return;
+      }
+      msg.style.color = ''; msg.textContent = '⏳ Đang xử lý…';
+      $('acct-signin').disabled = true; $('acct-signup').disabled = true;
+      try {
+        if (mode === 'up') await Sync.signUp(email, pass);
+        else await Sync.signIn(email, pass);
+        this.toast('✅ Đã đăng nhập — đang đồng bộ');
+        this.render();
+      } catch (e) {
+        const m = (e && e.message) || 'Lỗi';
+        msg.style.color = 'var(--orange)';
+        msg.textContent = '⚠️ ' + (/Invalid login/i.test(m) ? 'Sai email hoặc mật khẩu' :
+          /already registered/i.test(m) ? 'Email đã đăng ký — bấm Đăng nhập' : m);
+        if ($('acct-signin')) { $('acct-signin').disabled = false; $('acct-signup').disabled = false; }
+      }
+    };
+    if ($('acct-signin')) $('acct-signin').addEventListener('click', () => doAuth('in'));
+    if ($('acct-signup')) $('acct-signup').addEventListener('click', () => doAuth('up'));
+
     const seg = $('st-gender');
     seg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
       seg.querySelectorAll('button').forEach(x => x.classList.remove('active'));

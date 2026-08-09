@@ -1,5 +1,5 @@
 // Service worker — cache app shell để chạy offline
-const CACHE = 'caloviet-v23';
+const CACHE = 'caloviet-v24';
 const ASSETS = [
   './',
   './index.html',
@@ -11,6 +11,8 @@ const ASSETS = [
   './libs/zxing.min.js',
   './js/scanner.js',
   './js/vision.js',
+  './libs/supabase.min.js',
+  './js/sync.js',
   './js/app.js',
   './manifest.webmanifest',
   './icons/icon-192.png',

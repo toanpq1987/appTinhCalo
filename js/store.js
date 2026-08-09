@@ -19,6 +19,14 @@ const Store = {
   },
 
   save() {
+    this._data.updatedAt = Date.now();               // mốc để đồng bộ (máy lưu sau thắng)
+    localStorage.setItem(this.KEY, JSON.stringify(this._data));
+    if (typeof this._onSave === 'function') this._onSave(); // hook đẩy lên cloud (Sync)
+  },
+
+  // Thay toàn bộ dữ liệu (dùng khi kéo từ cloud về) — KHÔNG kích hoạt _onSave để tránh đẩy ngược
+  replaceAll(obj) {
+    this._data = obj || {};
     localStorage.setItem(this.KEY, JSON.stringify(this._data));
   },
 
