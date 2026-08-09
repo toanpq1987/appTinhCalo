@@ -3,7 +3,7 @@
 
 // Phiên bản app — PHẢI khớp số với CACHE trong sw.js (caloviet-v<APP_VERSION>).
 // Mỗi lần cập nhật: tăng số này + số trong sw.js để user biết iOS đã lấy bản mới.
-const APP_VERSION = 26;
+const APP_VERSION = 27;
 
 const MEALS = [
   { id: 'breakfast', name: 'Bữa sáng', icon: '🌅' },
@@ -41,7 +41,11 @@ const App = {
 
   async init() {
     Store.load();
-    if (typeof Sync !== 'undefined') Sync.init(); // đăng nhập + đồng bộ cloud (nếu có)
+    Store.loadRemoteFoodsCache();                  // món "thêm sau" (từ cache) hiện ngay
+    if (typeof Sync !== 'undefined') {
+      Sync.init();                                 // đăng nhập + đồng bộ cloud (nếu có)
+      Sync.fetchFoods();                           // tải món mới từ Supabase (không cần deploy)
+    }
 
     // Strava OAuth redirect?
     if (location.search.includes('code=')) {
@@ -468,7 +472,7 @@ const App = {
     list.innerHTML = foods.map(f => `
       <div class="food-item" data-food="${f.id}">
         <div>
-          <div class="f-name">${f.custom ? '⭐ ' : ''}${esc(f.name)}</div>
+          <div class="f-name">${f.composite ? '🍲 ' : f.custom ? '⭐ ' : ''}${esc(f.name)}</div>
           <div class="f-sub">${esc(f.portion || '')} · Đ:${f.protein || 0} T:${f.carbs || 0} B:${f.fat || 0}</div>
         </div>
         <div class="f-kcal">${f.kcal} <small>kcal</small></div>

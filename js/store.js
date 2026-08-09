@@ -1,7 +1,9 @@
 // ===== Lưu trữ dữ liệu (localStorage) =====
 const Store = {
   KEY: 'caloviet_v1',
+  FOODS_CACHE_KEY: 'caloviet_remote_foods',
   _data: null,
+  _remoteFoods: [], // món thêm sau, tải từ Supabase (bảng foods) — không cần deploy
 
   load() {
     if (this._data) return this._data;
@@ -102,7 +104,22 @@ const Store = {
   },
 
   allFoods() {
-    return [...this.load().customFoods, ...FOOD_DB];
+    // Món của tôi + món thêm sau (Supabase) + DB gốc trong code
+    return [...this.load().customFoods, ...this._remoteFoods, ...FOOD_DB];
+  },
+
+  // Đọc cache món remote (để offline / lần đầu hiện ngay)
+  loadRemoteFoodsCache() {
+    try {
+      const c = JSON.parse(localStorage.getItem(this.FOODS_CACHE_KEY));
+      if (Array.isArray(c)) this._remoteFoods = c;
+    } catch { /* bỏ qua */ }
+  },
+
+  // Cập nhật món remote (sau khi tải từ Supabase) + lưu cache
+  setRemoteFoods(arr) {
+    this._remoteFoods = Array.isArray(arr) ? arr : [];
+    try { localStorage.setItem(this.FOODS_CACHE_KEY, JSON.stringify(this._remoteFoods)); } catch { /* đầy bộ nhớ */ }
   },
 
   findFood(id) {

@@ -44,6 +44,37 @@ const Sync = {
   isOn() { return !!this.user; },
   email() { return this.user ? this.user.email : ''; },
 
+  // Tải món "thêm sau" từ bảng public foods (đọc công khai, không cần đăng nhập).
+  // Thêm/sửa món chỉ cần INSERT vào Supabase -> KHÔNG phải deploy code.
+  async fetchFoods() {
+    if (!navigator.onLine) return;
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/foods?select=*`, {
+        headers: { apikey: SUPABASE_ANON_KEY },
+      });
+      if (!res.ok) return; // bảng chưa tạo / offline -> dùng cache + DB gốc
+      const rows = await res.json();
+      if (!Array.isArray(rows)) return;
+      const foods = rows.map(r => ({
+        id: String(r.id),
+        name: r.name,
+        portion: r.portion || '100g',
+        kcal: Number(r.kcal) || 0,
+        protein: Number(r.protein) || 0,
+        carbs: Number(r.carbs) || 0,
+        fat: Number(r.fat) || 0,
+        cat: r.cat || 'ingredient',
+        composite: !!r.composite,
+        servings: r.servings || undefined,
+        ingredients: r.ingredients || undefined,
+      }));
+      Store.setRemoteFoods(foods);
+      if (typeof App !== 'undefined' && App.view === 'food') App.render();
+    } catch (e) {
+      console.warn('Tải món remote lỗi (bỏ qua):', e);
+    }
+  },
+
   statusText() {
     return {
       syncing: '🔄 Đang đồng bộ…',
