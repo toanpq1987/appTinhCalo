@@ -59,6 +59,15 @@ const Store = {
     this.save();
   },
 
+  // Sửa 1 món đã log (đổi số lượng/gram/bữa). Nếu đổi bữa vẫn giữ nguyên id.
+  updateMeal(dayKey, id, patch) {
+    const m = this.day(dayKey).meals.find(x => x.id === id);
+    if (!m) return null;
+    Object.assign(m, patch);
+    this.save();
+    return m;
+  },
+
   addWorkout(dayKey, w) {
     w.id = 'w' + Date.now() + Math.random().toString(36).slice(2, 6);
     this.day(dayKey).workouts.push(w);

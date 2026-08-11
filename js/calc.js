@@ -43,6 +43,26 @@ function calcTarget(profile) {
   return Math.max(1200, calcTDEE(profile) + goal.delta);
 }
 
+// ===== Mục tiêu macro mỗi ngày =====
+// Ưu tiên số user tự đặt (profile.macroTargets). Nếu để trống -> tự suy ra từ mục
+// tiêu calo: đạm 1.8 g/kg cân nặng, béo 25% calo, phần còn lại là tinh bột.
+function calcMacroTargets(profile, targetKcal) {
+  const t = targetKcal || calcTarget(profile);
+  const mt = profile && profile.macroTargets;
+  if (mt && (mt.protein || mt.carbs || mt.fat)) {
+    return {
+      protein: Math.round(mt.protein || 0),
+      carbs: Math.round(mt.carbs || 0),
+      fat: Math.round(mt.fat || 0),
+      auto: false,
+    };
+  }
+  const protein = Math.round((profile.weightKg || 65) * 1.8);
+  const fat = Math.round((t * 0.25) / 9);
+  const carbs = Math.round(Math.max(0, t - protein * 4 - fat * 9) / 4);
+  return { protein, carbs, fat, auto: true };
+}
+
 // ===== Kế hoạch cân nặng theo ngày đích =====
 // 1 kg mỡ ≈ 7.700 kcal. Ngưỡng an toàn: giảm ≤ 0.5 kg/tuần (tối đa 1),
 // tăng ≤ 0.5 kg/tuần (tối đa 0.75), calo nạp không dưới 1500 (nam) / 1200 (nữ).

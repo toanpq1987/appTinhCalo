@@ -3,7 +3,7 @@
 
 // Phiên bản app — PHẢI khớp số với CACHE trong sw.js (caloviet-v<APP_VERSION>).
 // Mỗi lần cập nhật: tăng số này + số trong sw.js để user biết iOS đã lấy bản mới.
-const APP_VERSION = 28;
+const APP_VERSION = 29;
 
 const MEALS = [
   { id: 'breakfast', name: 'Bữa sáng', icon: '🌅' },
@@ -260,6 +260,22 @@ const App = {
     const R = 56, C = 2 * Math.PI * R;
     const day = Store.day(this.dayKey);
 
+    // Mục tiêu macro/ngày + tiến độ đã ăn
+    const mt = calcMacroTargets(p, target);
+    const macroCell = (name, cur, tgt, color) => {
+      const c = Math.round(cur);
+      const pct = tgt > 0 ? Math.min(100, Math.round((c / tgt) * 100)) : 0;
+      const over = tgt > 0 && c > tgt;
+      const left = tgt > 0 ? tgt - c : 0;
+      return `<div class="macro">
+        <div class="m-val">${c}<span style="font-size:11px;color:var(--text-2);font-weight:600">/${tgt}g</span></div>
+        <div class="m-name">${name}${tgt > 0 ? (left > 0 ? ` · thiếu ${left}` : left < 0 ? ` · dư ${-left}` : ' · đủ ✓') : ''}</div>
+        <div style="background:var(--card);border-radius:999px;height:5px;margin-top:6px;overflow:hidden">
+          <div style="background:${over ? 'var(--red)' : color};height:100%;width:${pct}%"></div>
+        </div>
+      </div>`;
+    };
+
     let html = `
       <div class="card">
         <div class="summary">
@@ -285,9 +301,9 @@ const App = {
           </div>
         </div>
         <div class="macros">
-          <div class="macro"><div class="m-val">${s.protein}g</div><div class="m-name">Đạm</div></div>
-          <div class="macro"><div class="m-val">${s.carbs}g</div><div class="m-name">Tinh bột</div></div>
-          <div class="macro"><div class="m-val">${s.fat}g</div><div class="m-name">Béo</div></div>
+          ${macroCell('Đạm', s.protein, mt.protein, 'var(--green)')}
+          ${macroCell('Tinh bột', s.carbs, mt.carbs, 'var(--orange)')}
+          ${macroCell('Béo', s.fat, mt.fat, 'var(--blue)')}
         </div>
       </div>`;
 
@@ -380,7 +396,8 @@ const App = {
               })()}</div></div>
               <div style="display:flex;align-items:center">
                 <span class="e-kcal">${Math.round(m.kcal)}</span>
-                <button class="e-del" data-del-meal="${m.id}">✕</button>
+                <button class="e-del" data-edit-meal="${m.id}" style="font-size:14px" aria-label="Sửa">✏️</button>
+                <button class="e-del" data-del-meal="${m.id}" aria-label="Xóa">✕</button>
               </div>
             </div>`).join('') || ''}
           <button class="add-line" data-add-meal="${meal.id}">＋ Thêm món</button>
@@ -412,6 +429,11 @@ const App = {
       b.addEventListener('click', () => { this.pendingMeal = b.dataset.addMeal; this.go('food'); }));
     this.el.view.querySelectorAll('[data-del-meal]').forEach(b =>
       b.addEventListener('click', () => { Store.removeMeal(this.dayKey, b.dataset.delMeal); this.render(); }));
+    this.el.view.querySelectorAll('[data-edit-meal]').forEach(b =>
+      b.addEventListener('click', () => {
+        const entry = Store.day(this.dayKey).meals.find(m => m.id === b.dataset.editMeal);
+        if (entry) this.openEditMealModal(entry);
+      }));
     this.el.view.querySelectorAll('[data-del-workout]').forEach(b =>
       b.addEventListener('click', () => { Store.removeWorkout(this.dayKey, b.dataset.delWorkout); this.render(); }));
     const addW = this.el.view.querySelector('[data-add-workout]');
@@ -565,6 +587,95 @@ const App = {
       this.closeModal();
       if (food.composite && food.ingredients && food.ingredients.length) this.openRecipeEdit(food);
       else this.openCustomFoodModal(food);
+    });
+  },
+
+  // Sửa 1 món ĐÃ LOG: đổi số phần / gram / bữa (suy ra giá trị/phần từ bản ghi cũ)
+  openEditMealModal(entry) {
+    const qtyBase = entry.qty && entry.qty > 0 ? entry.qty : 1;
+    const per = {
+      kcal: entry.kcal / qtyBase,
+      protein: (entry.protein || 0) / qtyBase,
+      carbs: (entry.carbs || 0) / qtyBase,
+      fat: (entry.fat || 0) / qtyBase,
+    };
+    let qty = qtyBase;
+    const gMatch = (entry.portion || '').match(/(\d+(?:[.,]\d+)?)\s*(g|gram|ml)\b/i);
+    const baseG = gMatch ? parseFloat(gMatch[1].replace(',', '.')) : 0;
+    const unit = gMatch ? (gMatch[2].toLowerCase() === 'ml' ? 'ml' : 'g') : (entry.unit || '');
+
+    this.modal(`
+      <h3>Sửa món đã ăn</h3>
+      <div class="m-sub">${esc(entry.name)} · ${Math.round(per.kcal)} kcal / phần</div>
+      <div class="qty-row">
+        <button id="q-minus">−</button>
+        <input class="qty-input" id="q-val" type="number" inputmode="decimal" step="0.1" min="0.1" max="20" value="1">
+        <button id="q-plus">＋</button>
+      </div>
+      <div class="sub" style="text-align:center;margin-top:-8px;margin-bottom:12px">số phần — bấm vào số để gõ tùy ý (vd 1.3)</div>
+      ${baseG ? `
+      <div class="field"><label>Hoặc nhập chính xác lượng ăn (${unit})</label>
+        <input id="q-grams" type="number" inputmode="decimal" min="1" value="${baseG}">
+        <div class="hint">1 phần = ${baseG}${unit}</div>
+      </div>` : ''}
+      <div class="field"><label>Bữa</label>
+        <select id="q-meal">${MEALS.map(m => `<option value="${m.id}" ${m.id === entry.meal ? 'selected' : ''}>${m.icon} ${m.name}</option>`).join('')}</select>
+      </div>
+      <div class="macros" style="margin:0 0 14px">
+        <div class="macro"><div class="m-val" id="q-p">0g</div><div class="m-name">Đạm</div></div>
+        <div class="macro"><div class="m-val" id="q-c">0g</div><div class="m-name">Tinh bột</div></div>
+        <div class="macro"><div class="m-val" id="q-f">0g</div><div class="m-name">Béo</div></div>
+      </div>
+      <button class="btn" id="q-save">Lưu thay đổi — <span id="q-kcal">0</span> kcal</button>
+      <button class="btn danger" id="q-del" style="margin-top:8px">🗑️ Xóa món này</button>`);
+
+    const $ = id => document.getElementById(id);
+    const clamp = v => Math.min(20, Math.max(0.1, v));
+    const round2 = v => Math.round(v * 100) / 100;
+    const g1 = v => +(v || 0).toFixed(1);
+    const upd = (from) => {
+      $('q-kcal').textContent = Math.round(per.kcal * qty);
+      $('q-p').textContent = g1(per.protein * qty) + 'g';
+      $('q-c').textContent = g1(per.carbs * qty) + 'g';
+      $('q-f').textContent = g1(per.fat * qty) + 'g';
+      if (from !== 'qty') $('q-val').value = round2(qty);
+      if (baseG && from !== 'grams') $('q-grams').value = Math.round(qty * baseG);
+    };
+    upd();
+
+    $('q-minus').addEventListener('click', () => { qty = clamp(round2(qty - 0.5)); upd(); });
+    $('q-plus').addEventListener('click', () => { qty = clamp(round2(qty + 0.5)); upd(); });
+    $('q-val').addEventListener('input', () => {
+      const v = parseFloat($('q-val').value);
+      if (v > 0) { qty = clamp(round2(v)); upd('qty'); }
+    });
+    if (baseG) $('q-grams').addEventListener('input', () => {
+      const g = parseFloat($('q-grams').value);
+      if (g > 0) { qty = clamp(round2(g / baseG)); upd('grams'); }
+    });
+
+    $('q-save').addEventListener('click', () => {
+      qty = round2(qty);
+      Store.updateMeal(this.dayKey, entry.id, {
+        qty,
+        grams: baseG ? Math.round(qty * baseG) : (entry.grams || null),
+        unit: unit || null,
+        kcal: per.kcal * qty,
+        protein: per.protein * qty,
+        carbs: per.carbs * qty,
+        fat: per.fat * qty,
+        meal: $('q-meal').value,
+      });
+      this.closeModal();
+      this.toast('✅ Đã cập nhật món');
+      this.render();
+    });
+
+    $('q-del').addEventListener('click', () => {
+      Store.removeMeal(this.dayKey, entry.id);
+      this.closeModal();
+      this.toast('Đã xóa món');
+      this.render();
     });
   },
 
@@ -1010,21 +1121,36 @@ const App = {
     const avgNet = daysWithData.length ? Math.round(daysWithData.reduce((s, d) => s + d.kIn - d.kOut, 0) / daysWithData.length) : 0;
     const tdee = calcTDEE(p);
 
-    // Cân nặng
+    // Cân nặng — chạm vào điểm để xem ngày + kg (thay cho hover trên điện thoại)
     const ws = Store.load().weights.slice(-30);
     let weightChart = '<div class="empty-note">Chưa có dữ liệu cân nặng.</div>';
     if (ws.length >= 1) {
       const vals = ws.map(w => w.kg);
-      const lo = Math.min(...vals) - 1, hi = Math.max(...vals) + 1;
+      const minKg = Math.min(...vals), maxKg = Math.max(...vals);
+      const lo = minKg - 1, hi = maxKg + 1;
       const wy = v => 130 - 15 - ((v - lo) / (hi - lo)) * 100;
       const wx = i => ws.length === 1 ? 230 : 15 + (i / (ws.length - 1)) * 430;
       const pts = ws.map((w, i) => `${wx(i)},${wy(w.kg)}`).join(' ');
+      const first = ws[0], last = ws[ws.length - 1];
+      const diff = +(last.kg - first.kg).toFixed(1);
       weightChart = `
-        <svg class="bars" viewBox="0 0 460 130">
-          <polyline points="${pts}" fill="none" stroke="var(--green)" stroke-width="2.5" stroke-linejoin="round"/>
-          ${ws.map((w, i) => `<circle cx="${wx(i)}" cy="${wy(w.kg)}" r="3.5" fill="var(--green)"/>`).join('')}
-          <text x="${wx(ws.length - 1)}" y="${wy(ws[ws.length - 1].kg) - 10}" font-size="12" font-weight="700" fill="var(--text)" text-anchor="end">${ws[ws.length - 1].kg} kg</text>
-        </svg>`;
+        <div id="wt-svg" style="position:relative">
+          <div id="wt-tip" style="position:absolute;display:none;transform:translate(-50%,-145%);background:var(--text);color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:7px;white-space:nowrap;pointer-events:none;z-index:2"></div>
+          <svg class="bars" viewBox="0 0 460 130" style="display:block">
+            <polyline points="${pts}" fill="none" stroke="var(--green)" stroke-width="2.5" stroke-linejoin="round"/>
+            ${ws.map((w, i) => `<circle cx="${wx(i)}" cy="${wy(w.kg)}" r="3.5" fill="var(--green)" data-dot="${i}" style="pointer-events:none"/>`).join('')}
+            ${ws.map((w, i) => `<circle cx="${wx(i)}" cy="${wy(w.kg)}" r="11" fill="transparent" style="cursor:pointer"
+              data-wi="${i}" data-l="${(wx(i) / 460 * 100).toFixed(2)}" data-t="${(wy(w.kg) / 130 * 100).toFixed(2)}"
+              data-d="${esc(fmtFullDate(w.date))}" data-k="${w.kg}"/>`).join('')}
+            <text x="${wx(ws.length - 1)}" y="${wy(last.kg) - 10}" font-size="12" font-weight="700" fill="var(--text)" text-anchor="end">${last.kg} kg</text>
+          </svg>
+        </div>
+        <div class="legend" style="justify-content:space-between;margin-top:2px">
+          <span class="sub">${fmtFullDate(first.date)}</span>
+          <span class="sub">${ws.length} lần · ${diff > 0 ? '+' : ''}${diff} kg</span>
+          <span class="sub">${fmtFullDate(last.date)}</span>
+        </div>
+        <div class="sub" style="text-align:center;margin-top:4px">👆 Chạm vào điểm để xem ngày & cân nặng</div>`;
     }
 
     // Card mục tiêu cân nặng
@@ -1134,6 +1260,22 @@ const App = {
         this.render();
       });
     });
+
+    // Chạm điểm cân nặng -> hiện ngày + kg (thay hover, hợp điện thoại)
+    const wtSvg = document.getElementById('wt-svg');
+    if (wtSvg) {
+      const tip = document.getElementById('wt-tip');
+      const dots = wtSvg.querySelectorAll('[data-dot]');
+      wtSvg.querySelectorAll('[data-wi]').forEach(c => {
+        c.addEventListener('click', () => {
+          tip.style.left = c.dataset.l + '%';
+          tip.style.top = c.dataset.t + '%';
+          tip.textContent = c.dataset.d + ' · ' + c.dataset.k + ' kg';
+          tip.style.display = 'block';
+          dots.forEach(d => d.setAttribute('r', d.dataset.dot === c.dataset.wi ? '5.5' : '3.5'));
+        });
+      });
+    }
   },
 
   openGoalModal() {
@@ -1223,6 +1365,8 @@ const App = {
     const p = Store.profile;
     const st = Store.strava;
     const target = calcTarget(p);
+    const mtSaved = p.macroTargets || {};
+    const mtAuto = calcMacroTargets({ ...p, macroTargets: null }, target);
 
     const sync = typeof Sync !== 'undefined' ? Sync : null;
     const acct = !sync || !sync.isReady() ? `
@@ -1270,6 +1414,21 @@ const App = {
           <input id="st-override" type="number" inputmode="numeric" value="${p.targetOverride || ''}" placeholder="Đang dùng: ${target} kcal">
           ${Store.plan ? '<div class="hint">⚠️ Đang có mục tiêu cân nặng (tab Thống kê) — mục tiêu đó được ưu tiên hơn ô này.</div>' : ''}</div>
         <button class="btn" id="st-save">Lưu hồ sơ</button>
+      </div>
+
+      <div class="card">
+        <h2>🍽️ Mục tiêu macro / ngày</h2>
+        <div class="sub" style="margin-bottom:10px">Đặt lượng đạm / tinh bột / béo mục tiêu mỗi ngày (hiển thị tiến độ ở tab Hôm nay). Để trống = tự tính theo mục tiêu calo (đạm 1.8g/kg cân nặng, béo 25% calo).</div>
+        <div class="field-row">
+          <div class="field"><label>Đạm (g)</label><input id="mt-p" type="number" inputmode="numeric" value="${mtSaved.protein || ''}" placeholder="${mtAuto.protein}"></div>
+          <div class="field"><label>Tinh bột (g)</label><input id="mt-c" type="number" inputmode="numeric" value="${mtSaved.carbs || ''}" placeholder="${mtAuto.carbs}"></div>
+          <div class="field"><label>Béo (g)</label><input id="mt-f" type="number" inputmode="numeric" value="${mtSaved.fat || ''}" placeholder="${mtAuto.fat}"></div>
+        </div>
+        <div class="hint" id="mt-hint" style="margin:-4px 0 12px"></div>
+        <div class="btn-row">
+          <button class="btn" id="mt-save">Lưu macro</button>
+          <button class="btn secondary" id="mt-auto">↩️ Tự tính lại</button>
+        </div>
       </div>
 
       <div class="card">
@@ -1380,6 +1539,30 @@ const App = {
       };
       Store.profile = np;
       this.toast(`✅ Đã lưu. Mục tiêu: ${calcTarget(np)} kcal/ngày`);
+      this.render();
+    });
+
+    // ----- Mục tiêu macro -----
+    const mtHint = () => {
+      const pv = +$('mt-p').value || mtAuto.protein;
+      const cv = +$('mt-c').value || mtAuto.carbs;
+      const fv = +$('mt-f').value || mtAuto.fat;
+      const k = Math.round(pv * 4 + cv * 4 + fv * 9);
+      const diff = k - target;
+      $('mt-hint').innerHTML = `≈ <b>${k} kcal</b> từ macro · mục tiêu calo <b>${target}</b>${Math.abs(diff) > 50 ? ` (lệch ${diff > 0 ? '+' : ''}${diff})` : ' ✓'}`;
+    };
+    ['mt-p', 'mt-c', 'mt-f'].forEach(id => $(id).addEventListener('input', mtHint));
+    mtHint();
+    $('mt-save').addEventListener('click', () => {
+      const pv = +$('mt-p').value || 0, cv = +$('mt-c').value || 0, fv = +$('mt-f').value || 0;
+      const np = { ...p, macroTargets: (pv || cv || fv) ? { protein: pv, carbs: cv, fat: fv } : null };
+      Store.profile = np;
+      this.toast(np.macroTargets ? '✅ Đã lưu mục tiêu macro' : '↩️ Macro để tự tính');
+      this.render();
+    });
+    $('mt-auto').addEventListener('click', () => {
+      Store.profile = { ...p, macroTargets: null };
+      this.toast('↩️ Đã đặt macro tự tính theo calo');
       this.render();
     });
 
